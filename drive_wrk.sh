@@ -1,21 +1,17 @@
 #!/bin/bash
 # author: David Jones (djones6)
 #
-# Driver script to measure web server throughput and response time using JMeter.
+# Driver script to measure web server throughput and response time using Wrk.
 # To use this, you need:
-# 1) JMeter installed, and bin/jmeter symlinked to ./jmeter
-# 2) Java installed and on your path, so that jmeter can find it
-# 3) A Kitura (or similar) application built and ready to run
-# 4) An appropriate JMeter driver script for the app, which accepts parameters THREADS and DURATION
-# 5) The 'mpstat' utility installed (if you want per-core CPU utilisation)
-# 6) The 'numactl' utility installed (to control process affinity)
+# 1) Wrk installed, and symlinked to ./wrk
+# 2) A Kitura (or similar) application built and ready to run
+# 3) The 'mpstat' utility installed (if you want per-core CPU utilisation)
+# 4) The 'numactl' utility installed (to control process affinity)
 #
 # Customize this script for your machine. I'm running on a 2-socket machine,
-# with the server running on the first socket and JMeter running on the second.
+# with the server running on the first socket and wrk running on the second.
 # Change the args to numactl below so they make sense for your system.
 #
-# The JMeter user.properties specify a 6-second summarizer interval. When
-# opening 
 
 RUN_NAME=$1
 CPULIST=$2
@@ -23,20 +19,20 @@ SAMPLES=$3
 DURATION=$4
 WORK_DIR=$PWD
 APP_CMD=$5
-SCRIPT=$6
+URL=$6
 
 DRIVER_AFFINITY="numactl --cpunodebind=1 --membind=1"
 APP_AFFINITY="numactl --physcpubind=$CPULIST --membind=0"
 
 # Consume cmdline args (simplest possible implementation for now)
 if [ -z "$1" -o "$1" == "--help" ]; then
-  echo "Usage: $0 <run name> <cpu list> <clients list> <duration> <app> <driver>"
-  echo " - eg: $0 my_run_4way 0,1,2,3 1,5,10,100,200 30 ~/kitura ./driver.jmx"
+  echo "Usage: $0 <run name> <cpu list> <clients list> <duration> <app> <url>"
+  echo " - eg: $0 my_run_4way 0,1,2,3 1,5,10,100,200 30 ~/kitura http://127.0.0.1/hello"
   echo "  cpu list = comma-separated list of CPUs to affinitize to"
   echo "  client list = comma-separated list of # clients to drive load"
   echo "  duration = length of each load period (seconds)"
   echo "  app = app command to execute"
-  echo "  driver = jmeter script to use (something.jmx)"
+  echo "  url = URL to drive load against"
   exit 1
 fi
 # CPU list
@@ -59,10 +55,10 @@ if [ -z "$5" ]; then
   APP_CMD="./kitura"
   echo "App not specified, using default of '$APP_CMD'"
 fi
-# Driver script
+# URL
 if [ -z "$6" ]; then
-  SCRIPT="./driver.jmx"
-  echo "Driver script not specified, using default of '$SCRIPT'"
+  URL="http://127.0.0.1/json"
+  echo "URL not specified, using default of '$URL'"
 fi
 
 # Thanks to https://straypixels.net/getting-the-cpu-time-of-a-process-in-bash-is-difficult/
@@ -102,8 +98,8 @@ function do_sample {
   PRE_CPU=(`getcputime $APP_PID`)
 
   # Execute driver
-  echo $DRIVER_AFFINITY $WORK_DIR/jmeter -n -t ${SCRIPT} -q $WORK_DIR/user.properties -JTHREADS=$NUMCLIENTS -JDURATION=$DURATION -JRAMPUP=0 -JWARMUP=0
-  $DRIVER_AFFINITY $WORK_DIR/jmeter -n -t ${SCRIPT} -q $WORK_DIR/user.properties -JTHREADS=$NUMCLIENTS -JDURATION=$DURATION -JRAMPUP=0 -JWARMUP=0 > results.$NUMCLIENTS
+  echo $DRIVER_AFFINITY ${WORK_DIR}/wrk -t16 -c${NUMCLIENTS} -d${DURATION}s ${URL}
+  $DRIVER_AFFINITY ${WORK_DIR}/wrk -t16 -c${NUMCLIENTS} -d${DURATION}s ${URL} 2>&1 | tee results.$NUMCLIENTS
   
   # Diff CPU cycles after load applied
   POST_CPU=(`getcputime $APP_PID`)
@@ -111,33 +107,6 @@ function do_sample {
   ssec=$(bc <<< "${POST_CPU[2]} - ${PRE_CPU[2]}")
   totalsec=$(bc <<< "${POST_CPU[3]} - ${PRE_CPU[3]}")
   echo "CPU time delta: user=$usec sys=$ssec total=$totalsec"
-
-  # Cherry-pick useful information from JMeter summary
-  SUMMARY=`grep 'summary +' results.$NUMCLIENTS | tail -n 4 | head -n 3`
-  #echo $SUMMARY
-  #grep 'summary =' results.$NUMCLIENTS | tail -n 1
-  echo "Summary from final 3 intervals of JMeter output:"
-  echo $SUMMARY | awk '
-    BEGIN {
-      min=0;
-      max=0;
-      avg=0;
-      thruput=0;
-      count=0
-    }
-    /summary \+ / {
-      min=(min < $11 ? min : $11);
-      max=(max > $13 ? max : $13);
-      avg += $9;
-      sub("/s", "", $7);
-      thruput += $7;
-      count ++
-    }
-    END { 
-      avg=avg/count;
-      thruput=thruput/count;
-      print "Min: " min " ms,  Max: " max " ms,  Avg: " avg " ms,  Thruput: " thruput " resp/sec"
-    }'
 
   # Stop mpstat
   kill $MPSTAT_PID
@@ -168,7 +137,7 @@ echo "Run name = '$RUN_NAME'"
 echo "CPU list = '$CPULIST'"
 echo "Clients sequence = '$SAMPLES'"
 echo "Application: $APP_CMD"
-echo "Driver script: ${SCRIPT}"
+echo "URL: $URL"
 
 # Start server 
 echo "Starting App"
