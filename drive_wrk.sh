@@ -98,8 +98,8 @@ function do_sample {
   PRE_CPU=(`getcputime $APP_PID`)
 
   # Execute driver
-  echo $DRIVER_AFFINITY ${WORK_DIR}/wrk -t16 -c${NUMCLIENTS} -d${DURATION}s ${URL}
-  $DRIVER_AFFINITY ${WORK_DIR}/wrk -t16 -c${NUMCLIENTS} -d${DURATION}s ${URL} 2>&1 | tee results.$NUMCLIENTS
+  echo $DRIVER_AFFINITY ${WORK_DIR}/wrk --timeout 30 --latency -t16 -c${NUMCLIENTS} -d${DURATION}s ${URL}
+  $DRIVER_AFFINITY ${WORK_DIR}/wrk --timeout 30 --latency -t16 -c${NUMCLIENTS} -d${DURATION}s ${URL} 2>&1 | tee results.$NUMCLIENTS
   
   # Diff CPU cycles after load applied
   POST_CPU=(`getcputime $APP_PID`)
