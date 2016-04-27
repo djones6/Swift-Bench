@@ -179,11 +179,17 @@ APP_PID=$!
 echo "App pid=$APP_PID"
 sleep 1
 
+# monitor RSS
+$WORK_DIR/monitorRSS.sh $APP_PID 1 > rssout.txt &
+RSSMON=$!
+
 # Execute driver and associated monitoring for each number of clients
 for SAMPLE in `echo $SAMPLES | tr ',' ' '`; do
   do_sample $SAMPLE $DURATION
 done
 
 # Shut down
+kill $RSSMON
+
 echo "Killing App"
 kill $APP_PID
