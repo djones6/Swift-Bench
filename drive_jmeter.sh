@@ -24,19 +24,21 @@ DURATION=$4
 WORK_DIR=$PWD
 APP_CMD=$5
 SCRIPT=$6
+INSTANCES=$7
 
 DRIVER_AFFINITY="numactl --cpunodebind=1 --membind=1"
 APP_AFFINITY="numactl --physcpubind=$CPULIST --membind=0"
 
 # Consume cmdline args (simplest possible implementation for now)
 if [ -z "$1" -o "$1" == "--help" ]; then
-  echo "Usage: $0 <run name> <cpu list> <clients list> <duration> <app> <driver>"
-  echo " - eg: $0 my_run_4way 0,1,2,3 1,5,10,100,200 30 ~/kitura ./driver.jmx"
+  echo "Usage: $0 <run name> <cpu list> <clients list> <duration> <app> <driver> <instances>"
+  echo " - eg: $0 my_run_4way 0,1,2,3 1,5,10,100,200 30 ~/kitura ./driver.jmx 1"
   echo "  cpu list = comma-separated list of CPUs to affinitize to"
   echo "  client list = comma-separated list of # clients to drive load"
   echo "  duration = length of each load period (seconds)"
   echo "  app = app command to execute"
   echo "  driver = jmeter script to use (something.jmx)"
+  echo "  instances = number of copies of <app> to start"
   exit 1
 fi
 # CPU list
@@ -63,6 +65,10 @@ fi
 if [ -z "$6" ]; then
   SCRIPT="./driver.jmx"
   echo "Driver script not specified, using default of '$SCRIPT'"
+fi
+if [ -z "$7" ]; then
+  INSTANCES=1
+  echo "INSTANCES not specified, using default of '$INSTANCES'"
 fi
 
 # Thanks to https://straypixels.net/getting-the-cpu-time-of-a-process-in-bash-is-difficult/
@@ -99,18 +105,28 @@ function do_sample {
   #PS_PID=$!
   
   # Capture CPU cycles consumed by server before we apply load
-  PRE_CPU=(`getcputime $APP_PID`)
+  # (this avoids counting any CPU costs incurred during startup)
+  for APP_PID in $APP_PIDS; do
+    PRE_CPU=(`getcputime $APP_PID`)
+    PRE_CPUS="$PRE_CPU,$PRE_CPUS"
+  done
 
   # Execute driver
-  echo $DRIVER_AFFINITY $WORK_DIR/jmeter -n -t ${SCRIPT} -q $WORK_DIR/user.properties -JTHREADS=$NUMCLIENTS -JDURATION=$DURATION -JRAMPUP=0 -JWARMUP=0
-  $DRIVER_AFFINITY $WORK_DIR/jmeter -n -t ${SCRIPT} -q $WORK_DIR/user.properties -JTHREADS=$NUMCLIENTS -JDURATION=$DURATION -JRAMPUP=0 -JWARMUP=0 > results.$NUMCLIENTS
+  echo $DRIVER_AFFINITY $WORK_DIR/jmeter -n -t ${SCRIPT} -q $WORK_DIR/user.properties -JTHREADS=$NUMCLIENTS -JDURATION=$DURATION -JRAMPUP=0 -JWARMUP=0 | tee results.$NUMCLIENTS
+  $DRIVER_AFFINITY $WORK_DIR/jmeter -n -t ${SCRIPT} -q $WORK_DIR/user.properties -JTHREADS=$NUMCLIENTS -JDURATION=$DURATION -JRAMPUP=0 -JWARMUP=0 >> results.$NUMCLIENTS
   
   # Diff CPU cycles after load applied
-  POST_CPU=(`getcputime $APP_PID`)
-  usec=$(bc <<< "${POST_CPU[1]} - ${PRE_CPU[1]}")
-  ssec=$(bc <<< "${POST_CPU[2]} - ${PRE_CPU[2]}")
-  totalsec=$(bc <<< "${POST_CPU[3]} - ${PRE_CPU[3]}")
-  echo "CPU time delta: user=$usec sys=$ssec total=$totalsec"
+  let i=0
+  echo "CPU consumed per instance:" | tee cpu.$NUMCLIENTS
+  for APP_PID in $APP_PIDS; do
+    let i=$i+1
+    PRE_CPU=`echo $PRE_CPUS | cut -d',' -f${i}`
+    POST_CPU=(`getcputime $APP_PID`)
+    usec=$(bc <<< "${POST_CPU[1]} - ${PRE_CPU[1]}")
+    ssec=$(bc <<< "${POST_CPU[2]} - ${PRE_CPU[2]}")
+    totalsec=$(bc <<< "${POST_CPU[3]} - ${PRE_CPU[3]}")
+    echo "$i: CPU time delta: user=$usec sys=$ssec total=$totalsec" | tee -a cpu.$NUMCLIENTS
+  done
 
   # Cherry-pick useful information from JMeter summary
   SUMMARY=`grep 'summary +' results.$NUMCLIENTS | tail -n 4 | head -n 3`
@@ -150,15 +166,28 @@ function do_sample {
   #
   # Sum 100 - %idle (12) for each sample
   # Then divide by the number of samples collection ran for
+  echo "CPU utilization by processor number:" | tee -a cpu.$NUMCLIENTS
   for CPU in `echo $CPULIST | tr ',' ' '`; do
     NUM_CYCLES=`cat mpstat.$NUMCLIENTS | grep -e"..:..:.. \+${CPU}" | wc -l`
     AVG_CPU=`cat mpstat.$NUMCLIENTS | grep -e"..:..:.. \+${CPU}" | awk -v SAMPLES=${NUM_CYCLES} '{TOTAL = TOTAL + (100 - $12) } END {printf "%.1f",TOTAL/SAMPLES}'`
-    echo "CPU $CPU: $AVG_CPU %"
+    echo "CPU $CPU: $AVG_CPU %" | tee -a cpu.$NUMCLIENTS
   done
   #kill $PS_PID
   #wait $PS_PID 2>/dev/null
   # Post-process PS output (TODO)
 }
+
+function shutdown() {
+  echo "Kill app: $APP_PIDS"
+  kill $APP_PIDS
+  echo "Kill monitors: $RSSMON_PIDS $MPSTAT_PID"
+  kill $RSSMON_PIDS
+  kill $MPSTAT_PID
+  echo "Processes killed"
+  exit 1
+}
+
+trap shutdown SIGINT SIGQUIT SIGTERM
 
 # Begin run
 mkdir "$RUN_NAME"
@@ -171,17 +200,24 @@ echo "Application: $APP_CMD"
 echo "Driver script: ${SCRIPT}"
 
 # Start server 
-echo "Starting App"
-echo $APP_AFFINITY $APP_CMD
-$APP_AFFINITY $APP_CMD > app.log 2>&1 &
-APP_PID=$!
+echo "Starting App ($INSTANCES instances)"
+for i in `seq 1 $INSTANCES`; do
+  echo $APP_AFFINITY $APP_CMD | tee app${i}.log
+  $APP_AFFINITY $APP_CMD >> app${i}.log 2>&1 &
+  APP_PIDS="$! $APP_PIDS"
+done
 
-echo "App pid=$APP_PID"
+# Wait for servers to be ready (TODO: something better than 'sleep 1')
+echo "App pids=$APP_PIDS"
 sleep 1
 
 # monitor RSS
-$WORK_DIR/monitorRSS.sh $APP_PID 1 > rssout.txt &
-RSSMON=$!
+let i=0
+for APP_PID in $APP_PIDS; do
+  let i=$i+1
+  $WORK_DIR/monitorRSS.sh $APP_PID 1 > rssout${i}.txt &
+  RSSMON_PIDS="$! $RSSMON_PIDS"
+done
 
 # Execute driver and associated monitoring for each number of clients
 for SAMPLE in `echo $SAMPLES | tr ',' ' '`; do
@@ -189,7 +225,18 @@ for SAMPLE in `echo $SAMPLES | tr ',' ' '`; do
 done
 
 # Shut down
-kill $RSSMON
+kill $RSSMON_PIDS
+wait $RSSMON_PIDS
 
 echo "Killing App"
-kill $APP_PID
+kill $APP_PIDS
+wait $APP_PIDS
+
+# Summarize RSS growth
+echo "Resident set size (RSS) summary:" | tee mem.log
+for i in `seq 1 $INSTANCES`; do
+  RSS_START=`head -n 1 rssout${i}.txt | awk '{print $1}'`
+  RSS_END=`tail -n 1 rssout${i}.txt | awk '{print $1}'`
+  let RSS_DIFF=$RSS_END-$RSS_START
+  echo "$i: RSS (kb): start=$RSS_START end=$RSS_END delta=$RSS_DIFF" | tee -a mem.log
+done
