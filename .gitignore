@@ -1,3 +1,5 @@
 jmeter
 wrk
 /runs
+error_report.log
+jmeter.log
