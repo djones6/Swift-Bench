@@ -16,9 +16,23 @@ if [ -z "$INTERVAL" ]; then
   exit 1
 fi
 
-while true; do
-  #ps -p $PID -o rss,vsz | tail -n 1
+# Need to use different options to extract the RSS from Kitura on Linux, as (currently)
+# the process gets marked as 'defunct' and the information is only reported against the
+# other application threads.
+case `uname` in
+Linux)
   #fix for Kitura:
-  ps -p $PID -L -o rss,vsz | tail -n 1
+  PS_OPTS="-L -o rss,vsz"
+  ;;
+Darwin)
+  PS_OPTS="-o rss,vsz"
+  ;;
+*)
+  echo "Unknown OS '`uname`'"
+  exit 1
+esac
+
+while true; do
+  ps -p $PID $PS_OPTS | tail -n 1
   sleep $INTERVAL
 done
