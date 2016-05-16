@@ -22,8 +22,13 @@ APP_CMD=$5
 URL=$6
 INSTANCES=$7
 
+# Select workload driver (client simulator)
 #DRIVER="jmeter"
 DRIVER="wrk"
+
+# Select profiler (optional)
+PROFILER=""
+#PROFILER="valgrind"
 
 case `uname` in
 Linux)
@@ -142,6 +147,7 @@ function do_sample {
   wrk)
     echo $DRIVER_AFFINITY ${WORK_DIR}/wrk --timeout 30 --latency -t${WORK_THREADS} -c${NUMCLIENTS} -d${DURATION}s ${URL} | tee results.$NUMCLIENTS
     $DRIVER_AFFINITY ${WORK_DIR}/wrk --timeout 30 --latency -t${WORK_THREADS} -c${NUMCLIENTS} -d${DURATION}s ${URL} 2>&1 | tee -a results.$NUMCLIENTS
+    # For no keepalive you can do: -H "Connection: close"
     ;;
   *)
     echo "Unknown driver '$DRIVER'"
@@ -254,6 +260,15 @@ function setup() {
     fi
     ;;
   esac
+
+  case $PROFILER in
+  valgrind)
+    PROFILER_CMD="valgrind --tool=massif --time-unit=ms --max-snapshots=10 --detailed-freq=1"
+    ;;
+  *)
+    PROFILER_CMD=""
+    ;;
+  esac
 }
 
 #
@@ -263,7 +278,7 @@ function startup() {
   echo "Starting App ($INSTANCES instances)"
   for i in `seq 1 $INSTANCES`; do
     echo $APP_AFFINITY $APP_CMD | tee app${i}.log
-    $APP_AFFINITY $APP_CMD >> app${i}.log 2>&1 &
+    $APP_AFFINITY $PROFILER_CMD $APP_CMD >> app${i}.log 2>&1 &
     APP_PIDS="$! $APP_PIDS"
   done
 
@@ -306,6 +321,15 @@ function teardown() {
       echo "Restoring ephemeral port range"
       sudo sysctl -w net.inet.ip.portrange.first=$FIRST_EPHEM_PORT
     fi
+    ;;
+  esac
+
+  case $PROFILER in
+  valgrind)
+    APP_PID=`echo $APP_PIDS | cut -d' ' -f1`
+    ms_print massif.out.${APP_PID} > msprint.out.${APP_PID}
+    ;;
+  *)
     ;;
   esac
 }
