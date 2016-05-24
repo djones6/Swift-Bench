@@ -29,6 +29,8 @@ DRIVER="wrk"
 # Select profiler (optional)
 PROFILER=""
 #PROFILER="valgrind"
+#PROFILER="oprofile"
+#PROFILER="oprofile-sys"
 
 case `uname` in
 Linux)
@@ -261,7 +263,19 @@ function setup() {
     ;;
   esac
 
+  # Profiling with 'oprofile' or 'valgrind' will only work properly for 1 instance of the app.
+  # oprofile-sys should work with any number.
   case $PROFILER in
+  oprofile)
+    PROFILER_CMD="operf --callgraph"
+    ;;
+  oprofile-sys)
+    PROFILER_CMD=""
+    # To get kernel symbols, requires the linux-image-xyz-dbgsym package, see
+    # http://superuser.com/questions/62575/where-is-vmlinux-on-my-ubuntu-installation/309589#309589
+    sudo operf --callgraph --system-wide --separate-thread --vmlinux /usr/lib/debug/boot/vmlinux-`uname -r` &
+    PROFILER_PID=$!
+    ;;
   valgrind)
     let DETAILEDFREQ=$DURATION/2
     PROFILER_CMD="valgrind --tool=massif --time-unit=ms --max-snapshots=100 --detailed-freq=$DETAILEDFREQ"
@@ -300,9 +314,26 @@ function startup() {
 # Shutdown server instance(s) and associated monitoring
 #
 function shutdown() {
+  # Shut down RSS monitoring
   kill $RSSMON_PIDS
   wait $RSSMON_PIDS
-  kill $APP_PIDS
+  # Shut down application
+  case $PROFILER in
+  oprofile)
+    # Must kill operf with SIGINT, otherwise child processes are left running
+    kill -SIGINT $APP_PIDS
+    ;;
+  oprofile-sys)
+    kill $APP_PIDS
+    sudo kill -SIGINT $PROFILER_PID
+    wait $PROFILER_PID
+    ;;
+  *)
+    # Standard kill (SIGTERM)
+    kill $APP_PIDS
+    ;;
+  esac
+  # Wait for process(es) to end
   wait $APP_PIDS
 }
 
@@ -325,10 +356,15 @@ function teardown() {
     ;;
   esac
 
+  # Profiling output will be named with the pid of the first app instance
+  FIRST_APP_PID=`echo $APP_PIDS | cut -d' ' -f1`
   case $PROFILER in
+  oprofile | oprofile-sys)
+    opreport --symbols > oprofile.out.${FIRST_APP_PID}
+    opreport --xml > oprofile.xml.${FIRST_APP_PID}
+    ;;
   valgrind)
-    APP_PID=`echo $APP_PIDS | cut -d' ' -f1`
-    ms_print massif.out.${APP_PID} > msprint.out.${APP_PID}
+    ms_print massif.out.${FIRST_APP_PID} > msprint.out.${FIRST_APP_PID}
     ;;
   *)
     ;;
@@ -338,7 +374,10 @@ function teardown() {
 # Kills any processes started by this script and then exits
 function terminate() {
   echo "Killing app: $APP_PIDS"
-  kill $APP_PIDS
+  # Kill process group for each app instance (syntax: -pid)
+  for APP_PID in $APP_PIDS; do
+    kill -- -$APP_PID
+  done
   echo "Killing monitors: $RSSMON_PIDS $MPSTAT_PID"
   kill $RSSMON_PIDS
   kill $MPSTAT_PID
