@@ -263,7 +263,8 @@ function setup() {
 
   case $PROFILER in
   valgrind)
-    PROFILER_CMD="valgrind --tool=massif --time-unit=ms --max-snapshots=10 --detailed-freq=1"
+    let DETAILEDFREQ=$DURATION/2
+    PROFILER_CMD="valgrind --tool=massif --time-unit=ms --max-snapshots=100 --detailed-freq=$DETAILEDFREQ"
     ;;
   *)
     PROFILER_CMD=""
