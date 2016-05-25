@@ -267,13 +267,13 @@ function setup() {
   # oprofile-sys should work with any number.
   case $PROFILER in
   oprofile)
-    PROFILER_CMD="operf --callgraph"
+    PROFILER_CMD="operf --events CPU_CLK_UNHALTED:500000 --callgraph"
     ;;
   oprofile-sys)
     PROFILER_CMD=""
     # To get kernel symbols, requires the linux-image-xyz-dbgsym package, see
     # http://superuser.com/questions/62575/where-is-vmlinux-on-my-ubuntu-installation/309589#309589
-    sudo operf --callgraph --system-wide --separate-thread --vmlinux /usr/lib/debug/boot/vmlinux-`uname -r` &
+    sudo operf --events CPU_CLK_UNHALTED:500000 --callgraph --system-wide --vmlinux /usr/lib/debug/boot/vmlinux-`uname -r` &
     PROFILER_PID=$!
     ;;
   valgrind)
@@ -360,8 +360,11 @@ function teardown() {
   FIRST_APP_PID=`echo $APP_PIDS | cut -d' ' -f1`
   case $PROFILER in
   oprofile | oprofile-sys)
-    opreport --symbols > oprofile.out.${FIRST_APP_PID}
-    opreport --xml > oprofile.xml.${FIRST_APP_PID}
+    # Plaintext report (overall by image, then callgraph for symbols worth 1% or more)
+    opreport --threshold 0.1 > oprofile.${FIRST_APP_PID}.txt
+    opreport --callgraph --threshold 1 >> oprofile.${FIRST_APP_PID}.txt 2>/dev/null
+    # XML report (for use in VPA)
+    opreport --xml > oprofile.${FIRST_APP_PID}.opm
     ;;
   valgrind)
     ms_print massif.out.${FIRST_APP_PID} > msprint.out.${FIRST_APP_PID}
