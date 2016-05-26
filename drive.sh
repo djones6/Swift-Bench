@@ -84,7 +84,7 @@ if [ -z "$1" -o "$1" == "--help" ]; then
   echo "  client list = comma-separated list of # clients to drive load"
   echo "  duration = length of each load period (seconds)"
   echo "  app = app command to execute"
-  echo "  url = URL to drive load against"
+  echo "  url = URL to drive load against (or jmeter script)"
   echo "  instances = number of copies of <app> to start"
   exit 1
 fi
@@ -95,12 +95,12 @@ if [ -z "$2" ]; then
 fi
 # Clients list
 if [ -z "$3" ]; then
-  SAMPLES="100"
+  SAMPLES="128"
   echo "Clients list not specified; using default of '$SAMPLES'"
 fi
 # Duration
 if [ -z "$4" ]; then
-  DURATION=30
+  DURATION=10
   echo "Duration not specified; using default of '$DURATION'"
 fi
 # App
@@ -113,12 +113,6 @@ if [ -z "$6" ]; then
   URL="http://127.0.0.1:8080/plaintext"
   echo "URL not specified, using default of '$URL'"
 fi
-# Todo... split the URL
-# Idea... URL could be URL or driver script (which contains URL)
-# Todo... param for which driver to use
-SVHOST="127.0.0.1"
-SVPORT="8080"
-SVPATH="/plaintext"
 if [ -z "$7" ]; then
   INSTANCES=1
   echo "INSTANCES not specified, using default of '$INSTANCES'"
@@ -169,12 +163,13 @@ function do_sample {
   # Execute driver
   case $DRIVER in
   jmeter)
-    echo $DRIVER_AFFINITY $WORK_DIR/jmeter -n -t ${SCRIPT} -q $WORK_DIR/user.properties -JTHREADS=$NUMCLIENTS -JDURATION=$DURATION -JRAMPUP=0 -JWARMUP=0 -JHOST=$SVHOST -JPORT=$SVPORT -JPATH=$SVPATH | tee results.$NUMCLIENTS
-    $DRIVER_AFFINITY $WORK_DIR/jmeter -n -t ${SCRIPT} -q $WORK_DIR/user.properties -JTHREADS=$NUMCLIENTS -JDURATION=$DURATION -JRAMPUP=0 -JWARMUP=0 -JHOST=$SVHOST -JPORT=$SVPORT -JPATH=$SVPATH >> results.$NUMCLIENTS
+    SCRIPT=$URL  # Until I think of something better
+    echo $DRIVER_AFFINITY jmeter -n -t ${SCRIPT} -q $WORK_DIR/user.properties -JTHREADS=$NUMCLIENTS -JDURATION=$DURATION -JRAMPUP=0 -JWARMUP=0 | tee results.$NUMCLIENTS
+    $DRIVER_AFFINITY jmeter -n -t ${SCRIPT} -q $WORK_DIR/user.properties -JTHREADS=$NUMCLIENTS -JDURATION=$DURATION -JRAMPUP=0 -JWARMUP=0 >> results.$NUMCLIENTS
     ;;
   wrk)
-    echo $DRIVER_AFFINITY ${WORK_DIR}/wrk --timeout 30 --latency -t${WORK_THREADS} -c${NUMCLIENTS} -d${DURATION}s ${URL} | tee results.$NUMCLIENTS
-    $DRIVER_AFFINITY ${WORK_DIR}/wrk --timeout 30 --latency -t${WORK_THREADS} -c${NUMCLIENTS} -d${DURATION}s ${URL} 2>&1 | tee -a results.$NUMCLIENTS
+    echo $DRIVER_AFFINITY wrk --timeout 30 --latency -t${WORK_THREADS} -c${NUMCLIENTS} -d${DURATION}s ${URL} | tee results.$NUMCLIENTS
+    $DRIVER_AFFINITY wrk --timeout 30 --latency -t${WORK_THREADS} -c${NUMCLIENTS} -d${DURATION}s ${URL} 2>&1 | tee -a results.$NUMCLIENTS
     # For no keepalive you can do: -H "Connection: close"
     ;;
   *)
@@ -430,8 +425,8 @@ function terminate() {
 trap terminate SIGINT SIGQUIT SIGTERM
 
 # Begin run
-mkdir "$RUN_NAME"
-cd "$RUN_NAME"
+mkdir -p runs/$RUN_NAME
+cd runs/$RUN_NAME
 
 echo "Run name = '$RUN_NAME'"
 echo "CPU list = '$CPULIST'"
