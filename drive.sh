@@ -17,21 +17,24 @@ RUN_NAME=$1
 CPULIST=$2
 SAMPLES=$3
 DURATION=$4
-WORK_DIR=$PWD
 APP_CMD=$5
 URL=$6
 INSTANCES=$7
+WORK_DIR=$PWD
 
-# Select workload driver (client simulator)
-#DRIVER="jmeter"
-DRIVER="wrk"
+# Select workload driver (client simulator) with DRIVER env variable
+# (default: wrk)
+DRIVER_CHOICES="wrk jmeter"
+#DRIVER="wrk"
 
-# Select profiler (optional)
-PROFILER=""
-#PROFILER="valgrind"
-#PROFILER="oprofile"
-#PROFILER="oprofile-sys"
+# Select profiler with PROFILER env variable
+# (default: none)
+PROFILER_CHOICES="valgrind oprofile oprofile-sys perf"
+#PROFILER=""
 
+SUPPORTED_OSES="Linux Darwin"
+
+# Customize this section appropriately for your hardware
 case `uname` in
 Linux)
   DRIVER_AFFINITY="numactl --cpunodebind=1 --membind=1"
@@ -44,11 +47,34 @@ Darwin)
   APP_AFFINITY=""
   WORK_THREADS=4
   ;;
-*)
-  # Untested - assume it isn't going to work
-  echo "Unrecognized OS: '`uname`'"
-  exit 1
 esac
+
+# Check this OS is supported
+if [[ ! $SUPPORTED_OSES =~ `uname` ]]; then
+  echo "Unsupported operating system: `uname`"
+  exit 1
+fi
+
+# Consume environment settings
+if [ -z "$PROFILER" ]; then
+  PROFILER=""
+else
+  if [[ ! $PROFILER_CHOICES =~ $PROFILER ]]; then
+    echo "Unrecognized profiler option '$PROFILER'"
+    echo "Supported choices: $PROFILER_CHOICES"
+    exit 1
+  fi
+fi
+if [ -z "$DRIVER" ]; then
+  DRIVER="wrk"
+  echo "Using default driver: $DRIVER"
+else
+  if [[ ! $DRIVER_CHOICES =~ $DRIVER ]]; then
+    echo "Unrecognized driver option '$DRIVER'"
+    echo "Supported choices: $DRIVER_CHOICES"
+    exit 1
+  fi
+fi
 
 # Consume cmdline args (simplest possible implementation for now)
 if [ -z "$1" -o "$1" == "--help" ]; then
@@ -266,6 +292,11 @@ function setup() {
   # Profiling with 'oprofile' or 'valgrind' will only work properly for 1 instance of the app.
   # oprofile-sys should work with any number.
   case $PROFILER in
+  perf)
+    # Enable perf to access kernel address maps
+    echo 0 | sudo tee /proc/sys/kernel/kptr_restrict
+    PROFILER_CMD="perf record -g"
+    ;;
   oprofile)
     PROFILER_CMD="operf --events CPU_CLK_UNHALTED:500000 --callgraph"
     ;;
@@ -359,15 +390,22 @@ function teardown() {
   # Profiling output will be named with the pid of the first app instance
   FIRST_APP_PID=`echo $APP_PIDS | cut -d' ' -f1`
   case $PROFILER in
+  perf)
+    perf report --no-children -k /usr/lib/debug/boot/vmlinux-`uname -r` > perf-report.${FIRST_APP_PID}.txt
+    cat perf-report.${FIRST_APP_PID}.txt | swift-demangle > perf-report.${FIRST_APP_PID}.demangled.txt
+    ;;
   oprofile | oprofile-sys)
     # Plaintext report (overall by image, then callgraph for symbols worth 1% or more)
-    opreport --threshold 0.1 > oprofile.${FIRST_APP_PID}.txt
-    opreport --callgraph --threshold 1 >> oprofile.${FIRST_APP_PID}.txt 2>/dev/null
+    opreport --demangle=none --threshold 0.1 > oprofile.${FIRST_APP_PID}.txt
+    opreport --demangle=none --callgraph --threshold 1 >> oprofile.${FIRST_APP_PID}.txt 2>/dev/null
+    cat oprofile.${FIRST_APP_PID}.txt | swift-demangle > oprofile.${FIRST_APP_PID}.demangled.txt
     # XML report (for use in VPA)
     opreport --xml > oprofile.${FIRST_APP_PID}.opm
+    cat oprofile.${FIRST_APP_PID}.opm | swift-demangle > oprofile.${FIRST_APP_PID}.demangled.opm
     ;;
   valgrind)
-    ms_print massif.out.${FIRST_APP_PID} > msprint.out.${FIRST_APP_PID}
+    ms_print massif.out.${FIRST_APP_PID} > msprint.${FIRST_APP_PID}.txt
+    cat msprint.${FIRST_APP_PID}.txt | swift-demangle > msprint.${FIRST_APP_PID}.demangled.txt
     ;;
   *)
     ;;
