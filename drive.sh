@@ -145,7 +145,7 @@ function do_sample {
   Linux)
     # Start mpstat to monitor per-CPU utilization
     #
-    mpstat -P $CPULIST 5 > mpstat.$NUMCLIENTS &
+    env LC_ALL='en_GB.UTF-8' mpstat -P $CPULIST 5 > mpstat.$NUMCLIENTS &
     MPSTAT_PID=$!
     ;;
   Darwin)
@@ -168,6 +168,8 @@ function do_sample {
     $DRIVER_AFFINITY jmeter -n -t ${SCRIPT} -q $WORK_DIR/user.properties -JTHREADS=$NUMCLIENTS -JDURATION=$DURATION -JRAMPUP=0 -JWARMUP=0 >> results.$NUMCLIENTS
     ;;
   wrk)
+    # Number of connections must be >= threads
+    [[ ${WORK_THREADS} -gt ${NUMCLIENTS} ]] && WORK_THREADS=${NUMCLIENTS}
     echo $DRIVER_AFFINITY wrk --timeout 30 --latency -t${WORK_THREADS} -c${NUMCLIENTS} -d${DURATION}s ${URL} | tee results.$NUMCLIENTS
     $DRIVER_AFFINITY wrk --timeout 30 --latency -t${WORK_THREADS} -c${NUMCLIENTS} -d${DURATION}s ${URL} 2>&1 | tee -a results.$NUMCLIENTS
     # For no keepalive you can do: -H "Connection: close"
