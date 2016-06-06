@@ -295,7 +295,7 @@ function setup() {
     PROFILER_CMD="perf record -g"
     ;;
   oprofile)
-    PROFILER_CMD="operf --events CPU_CLK_UNHALTED:500000 --callgraph"
+    PROFILER_CMD="operf --events CPU_CLK_UNHALTED:500000 --callgraph --vmlinux /usr/lib/debug/boot/vmlinux-`uname -r`"
     ;;
   oprofile-sys)
     PROFILER_CMD=""
