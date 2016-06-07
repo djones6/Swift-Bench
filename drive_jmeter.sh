@@ -96,7 +96,7 @@ function do_sample {
   
   # Start mpstat to monitor per-CPU utilization
   #
-  mpstat -P $CPULIST 5 > mpstat.$NUMCLIENTS &
+  env LC_ALL='en_GB.UTF-8' mpstat -P $CPULIST 5 > mpstat.$NUMCLIENTS &
   MPSTAT_PID=$!
 
   # Collect information about process threads
