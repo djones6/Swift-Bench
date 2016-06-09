@@ -29,7 +29,7 @@ DRIVER_CHOICES="wrk jmeter"
 
 # Select profiler with PROFILER env variable
 # (default: none)
-PROFILER_CHOICES="valgrind oprofile oprofile-sys perf"
+PROFILER_CHOICES="valgrind oprofile oprofile-sys perf perf-cg perf-idle"
 #PROFILER=""
 
 SUPPORTED_OSES="Linux Darwin"
@@ -286,13 +286,22 @@ function setup() {
     ;;
   esac
 
-  # Profiling with 'oprofile' or 'valgrind' will only work properly for 1 instance of the app.
-  # oprofile-sys should work with any number.
+  # Profiling with 'oprofile', 'valgrind' and 'perf' will only work properly for 1 instance
+  # of the app. 'oprofile-sys' should work with any number.
   case $PROFILER in
   perf)
     # Enable perf to access kernel address maps
     echo 0 | sudo tee /proc/sys/kernel/kptr_restrict
+    PROFILER_CMD="perf record"
+    ;;
+  perf-cg)
+    # Enable perf to access kernel address maps
+    echo 0 | sudo tee /proc/sys/kernel/kptr_restrict
     PROFILER_CMD="perf record -g"
+    ;;
+  perf-idle)
+    # Need root permissions to get scheduler stats
+    PROFILER_CMD="sudo perf record -e sched:sched_stat_sleep -e sched:sched_switch -e sched:sched_process_exit -g -o perf.data.raw"
     ;;
   oprofile)
     PROFILER_CMD="operf --events CPU_CLK_UNHALTED:500000 --callgraph --vmlinux /usr/lib/debug/boot/vmlinux-`uname -r`"
@@ -347,6 +356,10 @@ function shutdown() {
   wait $RSSMON_PIDS
   # Shut down application
   case $PROFILER in
+  perf-idle)
+    # Perf was run with sudo, must kill with sudo
+    sudo kill $APP_PIDS
+    ;;
   oprofile)
     # Must kill operf with SIGINT, otherwise child processes are left running
     kill -SIGINT $APP_PIDS
@@ -388,8 +401,18 @@ function teardown() {
   FIRST_APP_PID=`echo $APP_PIDS | cut -d' ' -f1`
   case $PROFILER in
   perf)
-    perf report --no-children -k /usr/lib/debug/boot/vmlinux-`uname -r` > perf-report.${FIRST_APP_PID}.txt
+    perf report -k /usr/lib/debug/boot/vmlinux-`uname -r` > perf-report.${FIRST_APP_PID}.txt
     cat perf-report.${FIRST_APP_PID}.txt | swift-demangle > perf-report.${FIRST_APP_PID}.demangled.txt
+    ;;
+  perf-cg)
+    perf report --no-children -k /usr/lib/debug/boot/vmlinux-`uname -r` > perf-cg-report.${FIRST_APP_PID}.txt
+    cat perf-cg-report.${FIRST_APP_PID}.txt | swift-demangle > perf-cg-report.${FIRST_APP_PID}.demangled.txt
+    ;;
+  perf-idle)
+    sudo perf inject -v -s -i perf.data.raw -o perf.data
+    sudo chown $USER: perf.data.raw perf.data
+    perf report -k /usr/lib/debug/boot/vmlinux-`uname -r` > perf-idle-report.${FIRST_APP_PID}.txt
+    cat perf-idle-report.${FIRST_APP_PID}.txt | swift-demangle > perf-idle-report.${FIRST_APP_PID}.demangled.txt
     ;;
   oprofile | oprofile-sys)
     # Plaintext report (overall by image, then callgraph for symbols worth 1% or more)
