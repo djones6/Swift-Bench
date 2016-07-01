@@ -145,7 +145,11 @@ function do_sample {
   Linux)
     # Start mpstat to monitor per-CPU utilization
     #
-    env LC_ALL='en_GB.UTF-8' mpstat -P $CPULIST 5 > mpstat.$NUMCLIENTS &
+    MPSTAT_DUR=5
+    if [ $DURATION -lt $MPSTAT_DUR ]; then
+      MPSTAT_DUR=$DURATION  # Ensure at least one report generated for short runs
+    fi
+    env LC_ALL='en_GB.UTF-8' mpstat -P $CPULIST $MPSTAT_DUR > mpstat.$NUMCLIENTS &
     MPSTAT_PID=$!
     ;;
   Darwin)
@@ -241,11 +245,16 @@ function do_sample {
   # Sum 100 - %idle (12) for each sample
   # Then divide by the number of samples collection ran for
   echo "CPU utilization by processor number:" | tee -a cpu.$NUMCLIENTS
+  let NUM_CPUS=0
+  TOTAL_CPU=0
   for CPU in `echo $CPULIST | tr ',' ' '`; do
     NUM_CYCLES=`cat mpstat.$NUMCLIENTS | grep -e"..:..:.. \+${CPU}" | wc -l`
     AVG_CPU=`cat mpstat.$NUMCLIENTS | grep -e"..:..:.. \+${CPU}" | awk -v SAMPLES=${NUM_CYCLES} '{TOTAL = TOTAL + (100 - $12) } END {printf "%.1f",TOTAL/SAMPLES}'`
+    TOTAL_CPU=`echo $AVG_CPU | awk -v RTOT=$TOTAL_CPU '{print RTOT+$1}'`
     echo "CPU $CPU: $AVG_CPU %" | tee -a cpu.$NUMCLIENTS
+    let NUM_CPUS=$NUM_CPUS+1
   done
+  echo "Average CPU util: `echo $LIST_CPUS | awk -v n=$NUM_CPUS -v t=$TOTAL_CPU '{printf "%.1f",t/n}'` %"
     ;;
   Darwin)
     ;;
