@@ -58,13 +58,17 @@ fi
 
 # Check requested applications all exist
 let IMPLC=0
-for impl in $*; do
+for implstr in $*; do
+  # Parse impl string into executable,instances
+  impl=`echo $implstr | cut -d',' -f1`
+  instances=`echo $implstr | cut -d',' -f2 -s`
   if [ ! -e "$impl" ]; then
     echo "Error: $impl is not executable"
     exit 1
   fi
   let IMPLC=$IMPLC+1
   IMPLS[$IMPLC]=$impl
+  INSTANCES[$IMPLC]=$instances
   echo "Implementation $IMPLC: ${IMPLS[$IMPLC]}"
 done
 
@@ -77,10 +81,10 @@ for i in `seq 1 $ITERATIONS`; do
     let runNo=($i-1)*$IMPLC+$j
     out="compare_$run.out"
     # Usage: ./drive.sh <run name> <cpu list> <clients list> <duration> <app> <url> <instances>
-    ./drive.sh compare_$run $CPUS $CLIENTS $DURATION ${IMPLS[$j]} $URL 1 > $out 2>&1
+    ./drive.sh compare_$run $CPUS $CLIENTS $DURATION ${IMPLS[$j]} $URL ${INSTANCES[$j]} > $out 2>&1
     THROUGHPUT[$runNo]=`grep 'Requests/sec' $out | awk '{print $2}'`
     CPU[$runNo]=`grep 'Average CPU util' $out | awk '{print $4}'`
-    MEM[$runNo]=`grep 'RSS (kb)' $out | sed -e's#.*end=\([0-9]\+\).*#\1#'`
+    MEM[$runNo]=`grep 'RSS (kb)' $out | sed -e's#.*end=\([0-9][0-9]*\).*#\1#' | awk '{total += $1} END {print total}'`
     echo "Throughput = ${THROUGHPUT[$runNo]} CPU = ${CPU[$runNo]} MEM = ${MEM[$runNo]}"
   done
 done
