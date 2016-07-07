@@ -267,6 +267,12 @@ function do_sample {
 function setup() {
   case `uname` in
   Linux)
+    # For Perfect, I needed to enable tcp_tw_reuse and tcp_tw_recycle
+    # (this should be safe given that we are only talking over localhost)
+    TCP_TW_REUSE=`cat /proc/sys/net/ipv4/tcp_tw_reuse`
+    TCP_TW_RECYCLE=`cat /proc/sys/net/ipv4/tcp_tw_recycle`
+    sudo su -c "echo 1 > /proc/sys/net/ipv4/tcp_tw_reuse"
+    sudo su -c "echo 1 > /proc/sys/net/ipv4/tcp_tw_recycle"
     ;;
   Darwin)
     # On Mac, we have to monkey with the TCP defaults to drive load
@@ -393,6 +399,8 @@ function shutdown() {
 function teardown() {
   case `uname` in
   Linux)
+    sudo su -c "echo $TCP_TW_REUSE > /proc/sys/net/ipv4/tcp_tw_reuse"
+    sudo su -c "echo $TCP_TW_RECYCLE > /proc/sys/net/ipv4/tcp_tw_recycle"
     ;;
   Darwin)
     if [ $TCP_MSL -ne $NEW_TCP_MSL ]; then
