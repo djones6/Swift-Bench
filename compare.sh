@@ -18,7 +18,7 @@ if [ -z "$1" ]; then
 fi
 
 if [ -z "$ITERATIONS" ]; then
-  ITERATIONS=3
+  ITERATIONS=5
   echo "Using default ITERATIONS: $ITERATIONS"
 else
   echo "Using ITERATIONS: $ITERATIONS"
@@ -46,7 +46,7 @@ else
 fi
 
 if [ -z "$DURATION" ]; then
-  DURATION=10
+  DURATION=30
   echo "Using default DURATION: $DURATION"
 else
   echo "Using DURATION: $DURATION"
