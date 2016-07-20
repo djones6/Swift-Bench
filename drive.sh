@@ -1,10 +1,11 @@
 #!/bin/bash
 # author: David Jones (djones6)
 #
-# Driver script to measure web server throughput and response time using Wrk.
+# Driver script to measure web server throughput and response time using Wrk (or similar).
 # To use this, you need:
-# 1) Wrk installed, and symlinked to ./wrk
+# 1) A suitable load driver installed, and present on your path
 # 2) A Kitura (or similar) application built and ready to run
+# Linux only:
 # 3) The 'mpstat' utility installed (if you want per-core CPU utilisation)
 # 4) The 'numactl' utility installed (to control process affinity)
 #
@@ -12,7 +13,25 @@
 # with the server running on the first socket and wrk running on the second.
 # Change the args to numactl below so they make sense for your system.
 #
-
+### Load drivers:
+#
+# This script supports:
+# - wrk (https://github.com/wg/wrk) - highly efficient, variable-rate load generator
+# - wrk2 (https://github.com/giltene/wrk2) - fixed-rate wrk variant with accurate latency stats
+# - jmeter (http://jmeter.apache.org/) - highly customizable Java-based load generator
+#
+# 'wrk' and 'wrk2' drive a specific URL. 'jmeter' instead works from a script (.jmx).
+# 'wrk' and 'jmeter' drive variable amounts of load, as fast as the server can respond to it, and
+# are useful for measuring maximum attainable throughput.
+# 'wrk2' drives fixed levels of load, and is useful for measuring latency and CPU consumption
+# under different levels of demand.
+# 
+### Profilers:  (Linux only)
+#
+# For convenience, a number of profilers can be run in parallel via this script:
+# valgrind (massif tool) - useful in identifying memory leaks
+# oprofile / perf - system profilers, useful in identifying where CPU is consumed
+#
 RUN_NAME=$1
 CPULIST=$2
 SAMPLES=$3
@@ -24,7 +43,7 @@ WORK_DIR=$PWD
 
 # Select workload driver (client simulator) with DRIVER env variable
 # (default: wrk)
-DRIVER_CHOICES="wrk jmeter"
+DRIVER_CHOICES="wrk wrk2 jmeter"
 #DRIVER="wrk"
 
 # Select profiler with PROFILER env variable
@@ -78,7 +97,7 @@ fi
 
 # Consume cmdline args (simplest possible implementation for now)
 if [ -z "$1" -o "$1" == "--help" ]; then
-  echo "Usage: $0 <run name> <cpu list> <clients list> <duration> <app> <url> <instances>"
+  echo "Usage: $0 <run name> <cpu list> <clients list> <duration> <app> <url> <instances> <rate list>"
   echo " - eg: $0 my_run_4way 0,1,2,3 1,5,10,100,200 30 ~/kitura http://127.0.0.1:8080/hello 1"
   echo "  cpu list = comma-separated list of CPUs to affinitize to"
   echo "  client list = comma-separated list of # clients to drive load"
@@ -86,6 +105,7 @@ if [ -z "$1" -o "$1" == "--help" ]; then
   echo "  app = app command to execute"
   echo "  url = URL to drive load against (or jmeter script)"
   echo "  instances = number of copies of <app> to start"
+  echo "  rate list = comma-separated list of constant load levels (rps) to drive (only for wrk2)"
   exit 1
 fi
 # CPU list
@@ -113,9 +133,17 @@ if [ -z "$6" ]; then
   URL="http://127.0.0.1:8080/plaintext"
   echo "URL not specified, using default of '$URL'"
 fi
+# Instances
 if [ -z "$7" ]; then
   INSTANCES=1
   echo "INSTANCES not specified, using default of '$INSTANCES'"
+fi
+# Work rate (only used for wrk2 fixed-load generator)
+if [ "$DRIVER" = "wrk2" -a -z "$WORK_RATE" -a -z "$8" ]; then
+  WORK_RATE="1000,5000,10000"
+  echo "WORK_RATE not specified, using default of '$WORK_RATE'"
+elif [ -n "$8" ]; then
+  WORK_RATE=$8
 fi
 
 # Thanks to https://straypixels.net/getting-the-cpu-time-of-a-process-in-bash-is-difficult/
@@ -137,9 +165,14 @@ function getcputime {
 
 # Measures the server using a specified number of clients + duration.
 function do_sample {
-  NUMCLIENTS=$1
-  DURATION=$2
-  echo "Running load with $NUMCLIENTS clients"
+  NUMCLIENTS=$1        # Number of concurrent clients (connections)
+  DURATION=$2          # Time (in seconds) to drive load
+  RATE=$3              # Constant request rate (only used by 'wrk2')
+  if [ -z "$RATE" ]; then
+    echo "Running load with $NUMCLIENTS clients"
+  else
+    echo "Running load with $NUMCLIENTS clients and $RATE rps load level"
+  fi
   
   case `uname` in
   Linux)
@@ -176,6 +209,15 @@ function do_sample {
     [[ ${WORK_THREADS} -gt ${NUMCLIENTS} ]] && WORK_THREADS=${NUMCLIENTS}
     echo $DRIVER_AFFINITY wrk --timeout 30 --latency -t${WORK_THREADS} -c${NUMCLIENTS} -d${DURATION}s ${URL} | tee results.$NUMCLIENTS
     $DRIVER_AFFINITY wrk --timeout 30 --latency -t${WORK_THREADS} -c${NUMCLIENTS} -d${DURATION}s ${URL} 2>&1 | tee -a results.$NUMCLIENTS
+    # For no keepalive you can do: -H "Connection: close"
+    ;;
+  wrk2)
+    # Number of connections must be >= threads
+    [[ ${WORK_THREADS} -gt ${NUMCLIENTS} ]] && WORK_THREADS=${NUMCLIENTS}
+    # Because wrk2 uses a 10 second calibration period, add 10 seconds to the duration
+    let WRK2_DURATION=$DURATION+10
+    echo $DRIVER_AFFINITY wrk2 --timeout 30 --latency -R ${RATE} -t${WORK_THREADS} -c${NUMCLIENTS} -d${WRK2_DURATION}s ${URL} | tee results.$NUMCLIENTS
+    $DRIVER_AFFINITY wrk2 --timeout 30 --latency -R ${RATE} -t${WORK_THREADS} -c${NUMCLIENTS} -d${WRK2_DURATION}s ${URL} 2>&1 | tee -a results.$NUMCLIENTS
     # For no keepalive you can do: -H "Connection: close"
     ;;
   *)
@@ -419,17 +461,17 @@ function teardown() {
   case $PROFILER in
   perf)
     perf report -k /usr/lib/debug/boot/vmlinux-`uname -r` > perf-report.${FIRST_APP_PID}.txt
-    cat perf-report.${FIRST_APP_PID}.txt | swift-demangle > perf-report.${FIRST_APP_PID}.demangled.txt
+    cat perf-report.${FIRST_APP_PID}.txt | swift-demangle | sed -e's#  *$##' > perf-report.${FIRST_APP_PID}.demangled.txt
     ;;
   perf-cg)
     perf report --no-children -k /usr/lib/debug/boot/vmlinux-`uname -r` > perf-cg-report.${FIRST_APP_PID}.txt
-    cat perf-cg-report.${FIRST_APP_PID}.txt | swift-demangle > perf-cg-report.${FIRST_APP_PID}.demangled.txt
+    cat perf-cg-report.${FIRST_APP_PID}.txt | swift-demangle | sed -e's#  *$##' > perf-cg-report.${FIRST_APP_PID}.demangled.txt
     ;;
   perf-idle)
     sudo perf inject -v -s -i perf.data.raw -o perf.data
     sudo chown $USER: perf.data.raw perf.data
     perf report -k /usr/lib/debug/boot/vmlinux-`uname -r` > perf-idle-report.${FIRST_APP_PID}.txt
-    cat perf-idle-report.${FIRST_APP_PID}.txt | swift-demangle > perf-idle-report.${FIRST_APP_PID}.demangled.txt
+    cat perf-idle-report.${FIRST_APP_PID}.txt | swift-demangle | sed -e's#  *$##' > perf-idle-report.${FIRST_APP_PID}.demangled.txt
     ;;
   oprofile | oprofile-sys)
     # Plaintext report (overall by image, then callgraph for symbols worth 1% or more)
@@ -452,15 +494,19 @@ function teardown() {
 # Kills any processes started by this script and then exits
 function terminate() {
   echo "Killing app: $APP_PIDS"
-  # Kill process group for each app instance (syntax: -pid)
+  # Kill each app instance 
   for APP_PID in $APP_PIDS; do
-    kill -- -$APP_PID
+    kill $APP_PID
   done
   echo "Killing monitors: $RSSMON_PIDS $MPSTAT_PID"
   kill $RSSMON_PIDS
   kill $MPSTAT_PID
   echo "Processes killed"
   teardown
+  # Kill anything with the same PGID as our PID (syntax: -PID)
+  trap - SIGTERM
+  echo "Killing anything with our pgid"
+  kill -- -$$
   exit 1
 }
 
@@ -473,6 +519,9 @@ cd runs/$RUN_NAME
 echo "Run name = '$RUN_NAME'"
 echo "CPU list = '$CPULIST'"
 echo "Clients sequence = '$SAMPLES'"
+if [ -n "$WORK_RATE" ]; then
+  echo "Load level sequence = '$WORK_RATE'"
+fi
 echo "Application: $APP_CMD"
 echo "URL: $URL"
 
@@ -481,7 +530,18 @@ startup
 
 # Execute driver and associated monitoring for each number of clients
 for SAMPLE in `echo $SAMPLES | tr ',' ' '`; do
-  do_sample $SAMPLE $DURATION
+  case $DRIVER in
+  wrk2)
+    # Constant-rate: Execute driver for each load level
+    for RATE in `echo $WORK_RATE | tr ',' ' '`; do
+      do_sample $SAMPLE $DURATION $RATE
+    done
+    ;;
+  *)
+    # Variable-rate: Drive at maximum speed (given no. of clients)
+    do_sample $SAMPLE $DURATION
+    ;;
+  esac
 done
 
 shutdown
