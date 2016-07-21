@@ -4,6 +4,12 @@ It is essentially a small collection of bash scripts, calling out to standard to
 
 This is firmly a work in progress and growing features as I need them. Contributions, fixes and improvements are welcome!
 
+###Requirements:
+On Mac, there are no prereqs other than a suitable workload driver (see below).
+On Linux, you may additionally want to install:
+- `mpstat` (Ubuntu: `sudo apt-get install sysstat`)
+- `numactl` if not already installed (`sudo apt-get install numactl)`
+
 ###Usage:
 `./drive.sh run_name [cpu list] [clients list] [duration] [app] [url] [instances] [rate list]`
 - cpu list = comma-separated list of CPUs to affinitize the application to (eg: 0,1,2,3)
@@ -23,7 +29,23 @@ Results and output files are stored under a subdirectory `runs/<run name>/`
 - The original output from `drive.sh` is preserved in a series of files named `compare_<iteration no>_<app no>.out`.
 - Compares can be customized by setting various environment variables:
 ```
+  ITERATIONS: number of repetitions of each implementation (default: 5)
+  URL: url to drive load against (default: http://127.0.0.1:8080/plaintext)
+  CPUS: list of CPUs to affinitize to (default: 0,1,2,3)
+  CLIENTS: # of concurrent clients (default: 128)
+  DURATION: time (sec) to apply load (default: 30)
 ```
+###Example output
+
+Output from `compare.sh` is in the following format:
+```
+Implementation | Avg Throughput | Max Throughput | Avg CPU | Avg RSS (kb)
+---------------|----------------|----------------|---------|--------------
+             1 |        38122.0 |       38609.66 |    88.6 |       793990
+             2 |        33068.6 |       33508.57 |    99.9 |        53444
+             3 |         3196.4 |        3196.90 |    10.1 |        42287
+ ```
+This is a simple summarization of the output from each run of each implementation. Further details for each measurement can be found by examining the `compare_<iteration no>_<app no>.out` files.
 
 ###Workload driver
 
