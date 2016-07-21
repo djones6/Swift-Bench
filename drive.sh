@@ -173,29 +173,39 @@ function do_sample {
   else
     echo "Running load with $NUMCLIENTS clients and $RATE rps load level"
   fi
-  
+ 
+  # Start recording CPU utilization 
+  CPU_SAMP_FREQ=5
+  if [ $DURATION -lt $CPU_SAMP_FREQ ]; then
+    CPU_SAMP_FREQ=$DURATION  # Ensure at least one report generated for short runs
+  fi
   case `uname` in
   Linux)
     # Start mpstat to monitor per-CPU utilization
     #
-    MPSTAT_DUR=5
-    if [ $DURATION -lt $MPSTAT_DUR ]; then
-      MPSTAT_DUR=$DURATION  # Ensure at least one report generated for short runs
-    fi
-    env LC_ALL='en_GB.UTF-8' mpstat -P $CPULIST $MPSTAT_DUR > mpstat.$NUMCLIENTS &
+    env LC_ALL='en_GB.UTF-8' mpstat -P $CPULIST $CPU_SAMP_FREQ > mpstat.$NUMCLIENTS &
     MPSTAT_PID=$!
+    # Capture CPU cycles consumed by server before we apply load
+    # (this avoids counting any CPU costs incurred during startup)
+    #
+    for APP_PID in $APP_PIDS; do
+      PRE_CPU=(`getcputime $APP_PID`)
+      PRE_CPUS="$PRE_CPU,$PRE_CPUS"
+    done
     ;;
   Darwin)
-    # Don't know how to do this yet
+    # Monitor overall CPU utilization using top
+    #
+    top -F -R -o cpu -n 5 -ncols 10 -s $CPU_SAMP_FREQ > top.$NUMCLIENTS &
+    TOP_PID=$!
+    # Capture CPU cycles consumed by server before we apply load
+    for APP_PID in $APP_PIDS; do
+      # Output 2 values: user, total
+      PRE_CPU=`ps -p $APP_PID -o utime=,cputime= | awk '{print $1 " " $2}'`
+      PRE_CPUS="$PRE_CPU,$PRE_CPUS"
+    done
     ;;
   esac
-
-  # Capture CPU cycles consumed by server before we apply load
-  # (this avoids counting any CPU costs incurred during startup)
-  for APP_PID in $APP_PIDS; do
-    PRE_CPU=(`getcputime $APP_PID`)
-    PRE_CPUS="$PRE_CPU,$PRE_CPUS"
-  done
 
   # Execute driver
   case $DRIVER in
@@ -225,19 +235,6 @@ function do_sample {
     ;;
   esac
   
-  # Diff CPU cycles after load applied
-  let i=0
-  echo "CPU consumed per instance:" | tee cpu.$NUMCLIENTS
-  for APP_PID in $APP_PIDS; do
-    let i=$i+1
-    PRE_CPU=`echo $PRE_CPUS | cut -d',' -f${i}`
-    POST_CPU=(`getcputime $APP_PID`)
-    usec=$(bc <<< "${POST_CPU[1]} - ${PRE_CPU[1]}")
-    ssec=$(bc <<< "${POST_CPU[2]} - ${PRE_CPU[2]}")
-    totalsec=$(bc <<< "${POST_CPU[3]} - ${PRE_CPU[3]}")
-    echo "$i: CPU time delta: user=$usec sys=$ssec total=$totalsec" | tee -a cpu.$NUMCLIENTS
-  done
-
   # Post-process driver output
   case $DRIVER in
   jmeter)
@@ -275,30 +272,89 @@ function do_sample {
 
   case `uname` in
   Linux)
-  # Stop mpstat
-  kill $MPSTAT_PID
-  wait $MPSTAT_PID 2>/dev/null
-  # Post-process output
-  #
-  # mpstat produces output in the following format:
-  # 14:06:05     CPU    %usr   %nice    %sys %iowait    %irq   %soft  %steal  %guest  %gnice   %idle
-  # 14:06:05     <n>    0.04    0.00    0.01    0.00    0.00    0.00    0.00    0.00    0.00   99.95
-  #
-  # Sum 100 - %idle (12) for each sample
-  # Then divide by the number of samples collection ran for
-  echo "CPU utilization by processor number:" | tee -a cpu.$NUMCLIENTS
-  let NUM_CPUS=0
-  TOTAL_CPU=0
-  for CPU in `echo $CPULIST | tr ',' ' '`; do
-    NUM_CYCLES=`cat mpstat.$NUMCLIENTS | grep -e"..:..:.. \+${CPU}" | wc -l`
-    AVG_CPU=`cat mpstat.$NUMCLIENTS | grep -e"..:..:.. \+${CPU}" | awk -v SAMPLES=${NUM_CYCLES} '{TOTAL = TOTAL + (100 - $12) } END {printf "%.1f",TOTAL/SAMPLES}'`
-    TOTAL_CPU=`echo $AVG_CPU | awk -v RTOT=$TOTAL_CPU '{print RTOT+$1}'`
-    echo "CPU $CPU: $AVG_CPU %" | tee -a cpu.$NUMCLIENTS
-    let NUM_CPUS=$NUM_CPUS+1
-  done
-  echo "Average CPU util: `echo $LIST_CPUS | awk -v n=$NUM_CPUS -v t=$TOTAL_CPU '{printf "%.1f",t/n}'` %"
+    # Diff CPU cycles after load applied
+    let i=0
+    echo "CPU consumed per instance:" | tee cpu.$NUMCLIENTS
+    for APP_PID in $APP_PIDS; do
+      let i=$i+1
+      PRE_CPU=`echo $PRE_CPUS | cut -d',' -f${i}`
+      POST_CPU=(`getcputime $APP_PID`)
+      usec=$(bc <<< "${POST_CPU[1]} - ${PRE_CPU[1]}")
+      ssec=$(bc <<< "${POST_CPU[2]} - ${PRE_CPU[2]}")
+      totalsec=$(bc <<< "${POST_CPU[3]} - ${PRE_CPU[3]}")
+      echo "$i: CPU time delta: user=$usec sys=$ssec total=$totalsec" | tee -a cpu.$NUMCLIENTS
+    done
+    # Stop mpstat
+    kill $MPSTAT_PID
+    wait $MPSTAT_PID 2>/dev/null
+    # Post-process output
+    #
+    # mpstat produces output in the following format:
+    # 14:06:05     CPU    %usr   %nice    %sys %iowait    %irq   %soft  %steal  %guest  %gnice   %idle
+    # 14:06:05     <n>    0.04    0.00    0.01    0.00    0.00    0.00    0.00    0.00    0.00   99.95
+    #
+    # Sum 100 - %idle (12) for each sample
+    # Then divide by the number of samples collection ran for
+    echo "CPU utilization by processor number:" | tee -a cpu.$NUMCLIENTS
+    let NUM_CPUS=0
+    TOTAL_CPU=0
+    for CPU in `echo $CPULIST | tr ',' ' '`; do
+      NUM_CYCLES=`cat mpstat.$NUMCLIENTS | grep -e"..:..:.. \+${CPU}" | wc -l`
+      AVG_CPU=`cat mpstat.$NUMCLIENTS | grep -e"..:..:.. \+${CPU}" | awk -v SAMPLES=${NUM_CYCLES} '{TOTAL = TOTAL + (100 - $12) } END {printf "%.1f",TOTAL/SAMPLES}'`
+      TOTAL_CPU=`echo $AVG_CPU | awk -v RTOT=$TOTAL_CPU '{print RTOT+$1}'`
+      echo "CPU $CPU: $AVG_CPU %" | tee -a cpu.$NUMCLIENTS
+      let NUM_CPUS=$NUM_CPUS+1
+    done
+    echo "Average CPU util: `echo $LIST_CPUS | awk -v n=$NUM_CPUS -v t=$TOTAL_CPU '{printf "%.1f",t/n}'` %"
     ;;
   Darwin)
+    # Diff CPU cycles after load applied
+    let i=0
+    echo "CPU consumed per instance:" | tee cpu.$NUMCLIENTS
+    for APP_PID in $APP_PIDS; do
+      let i=$i+1
+      PRE_CPU=`echo $PRE_CPUS | cut -d',' -f${i}`
+      POST_CPU=`ps -p $APP_PID -o utime=,cputime= | awk '{print $1 " " $2}'`
+      # Convert H:M:S.ss format to S.ss (regex from http://stackoverflow.com/questions/2181712)
+      PRE_U_SEC=`echo $PRE_CPU | cut -d' ' -f1 | sed -E 's/(.*):(.+):(.+)/\1*3600+\2*60+\3/;s/(.+):(.+)/\1*60+\2/' | bc`
+      PRE_T_SEC=`echo $PRE_CPU | cut -d' ' -f2 | sed -E 's/(.*):(.+):(.+)/\1*3600+\2*60+\3/;s/(.+):(.+)/\1*60+\2/' | bc`
+      POST_U_SEC=`echo $POST_CPU | cut -d' ' -f1 | sed -E 's/(.*):(.+):(.+)/\1*3600+\2*60+\3/;s/(.+):(.+)/\1*60+\2/' | bc`
+      POST_T_SEC=`echo $POST_CPU | cut -d' ' -f2 | sed -E 's/(.*):(.+):(.+)/\1*3600+\2*60+\3/;s/(.+):(.+)/\1*60+\2/' | bc`
+      usec=$(bc <<< "${POST_U_SEC} - ${PRE_U_SEC}")
+      totalsec=$(bc <<< "${POST_T_SEC} - ${PRE_T_SEC}")
+      ssec=$(bc <<< "${totalsec} - ${usec}")
+      echo "$i: CPU time delta: user=$usec sys=$ssec total=$totalsec" | tee -a cpu.$NUMCLIENTS
+    done
+    # Collect post-load process CPU usage
+    # Stop top
+    kill $TOP_PID
+    wait $TOP_PID 2>/dev/null
+    # Post-process output of: top -F -R -o cpu -n 5 -ncols 10 -s 5
+    # This invocation of top produces output in the following format:
+    #
+    # Processes: 259 total, 5 running, 7 stuck, 247 sleeping, 1068 threads
+    # 2016/07/15 11:09:33
+    # Load Avg: 4.96, 4.41, 4.01
+    # CPU usage: 43.27% user, 49.57% sys, 7.14% idle
+    # MemRegions: 33096 total, 1179M resident, 0B private, 222M shared.
+    # PhysMem: 4298M used (1844M wired), 12G unused.
+    # VM: 706G vsize, 0B framework vsize, 9117231(0) swapins, 9665493(0) swapouts.
+    # Networks: packets: 276435264/34G in, 271810311/23G out.
+    # Disks: 2876920/86G read, 2889399/107G written.
+    # 
+    # PID    COMMAND     %CPU  TIME     #TH   #WQ   #PORTS MEM    PURG CMPRS
+    # 86137  TechEmpower 578.6 02:09.58 27/8  25/10 46     515M+  0B   0B
+    NUM_SAMPLES=`grep 'CPU usage:' top.$NUMCLIENTS | wc -l | sed -e's# *##g'`
+    # Grab list of values for each field
+    CPU_USER_SAMPLES=`grep 'CPU usage:' top.$NUMCLIENTS | awk '{printf "%s ",$3}'`
+    CPU_SYS_SAMPLES=`grep 'CPU usage:' top.$NUMCLIENTS | awk '{printf "%s ",$5}'`
+    CPU_IDLE_SAMPLES=`grep 'CPU usage:' top.$NUMCLIENTS | awk '{printf "%s ",$7}'`
+    # Sum each list of samples, then divide by no. of samples
+    CPU_USER_AVG=`echo $CPU_USER_SAMPLES | sed -e's/% /+/g' -e's/%//' | bc | awk -v SAMPLES=$NUM_SAMPLES '{printf "%.1f",$1/SAMPLES}'`
+    CPU_SYS_AVG=`echo $CPU_SYS_SAMPLES | sed -e's/% /+/g' -e's/%//' | bc | awk -v SAMPLES=$NUM_SAMPLES '{printf "%.1f",$1/SAMPLES}'`
+    CPU_IDLE_AVG=`echo $CPU_IDLE_SAMPLES | sed -e's/% /+/g' -e's/%//' | bc | awk -v SAMPLES=$NUM_SAMPLES '{printf "%.1f",$1/SAMPLES}'`
+    CPU_TOTAL_AVG=`echo "100 - $CPU_IDLE_AVG" | bc`
+    echo "Average CPU util: $CPU_TOTAL_AVG% (${CPU_USER_AVG}% user, ${CPU_SYS_AVG}% sys, ${CPU_IDLE_AVG}% idle)"
     ;;
   esac
 }
