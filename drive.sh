@@ -303,7 +303,7 @@ function end_monitor_cpu {
     CPU_SYS_AVG=`echo $CPU_SYS_SAMPLES | sed -e's/% /+/g' -e's/%//' | bc | awk -v SAMPLES=$NUM_SAMPLES '{printf "%.1f",$1/SAMPLES}'`
     CPU_IDLE_AVG=`echo $CPU_IDLE_SAMPLES | sed -e's/% /+/g' -e's/%//' | bc | awk -v SAMPLES=$NUM_SAMPLES '{printf "%.1f",$1/SAMPLES}'`
     CPU_TOTAL_AVG=`echo "100 - $CPU_IDLE_AVG" | bc`
-    echo "Average CPU util: $CPU_TOTAL_AVG% (${CPU_USER_AVG}% user, ${CPU_SYS_AVG}% sys, ${CPU_IDLE_AVG}% idle)"
+    echo "Average CPU util: $CPU_TOTAL_AVG % (${CPU_USER_AVG} % user, ${CPU_SYS_AVG} % sys, ${CPU_IDLE_AVG} % idle)"
     ;;
   esac
 }
