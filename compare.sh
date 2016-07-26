@@ -85,7 +85,9 @@ for i in `seq 1 $ITERATIONS`; do
     THROUGHPUT[$runNo]=`grep 'Requests/sec' $out | awk '{print $2}'`
     CPU[$runNo]=`grep 'Average CPU util' $out | awk '{print $4}'`
     MEM[$runNo]=`grep 'RSS (kb)' $out | sed -e's#.*end=\([0-9][0-9]*\).*#\1#' | awk '{total += $1} END {print total}'`
-    echo "Throughput = ${THROUGHPUT[$runNo]} CPU = ${CPU[$runNo]} MEM = ${MEM[$runNo]}"
+    LATAVG[$runNo]=`grep 'Latency  ' $out | awk '{print $2}'`
+    LATMAX[$runNo]=`grep 'Latency  ' $out | awk '{print $4}'`
+    echo "Throughput = ${THROUGHPUT[$runNo]} CPU = ${CPU[$runNo]} MEM = ${MEM[$runNo]}  Latency: avg = ${LATAVG[$runNo]} max = ${LATMAX[$runNo]}"
   done
 done
 
