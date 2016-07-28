@@ -76,12 +76,15 @@ done
 for i in `seq 1 $ITERATIONS`; do
   for j in `seq 1 $IMPLC`; do
     echo "Iteration $i: Implementation $j"
-    sleep $SLEEP  # Allow system time to settle
     run="${i}_${j}"
     let runNo=($i-1)*$IMPLC+$j
     out="compare_$run.out"
-    # Usage: ./drive.sh <run name> <cpu list> <clients list> <duration> <app> <url> <instances>
-    ./drive.sh compare_$run $CPUS $CLIENTS $DURATION ${IMPLS[$j]} $URL ${INSTANCES[$j]} > $out 2>&1
+    # set RECOMPARE to skip running + just re-parse output files from an earlier run
+    if [ -z "$RECOMPARE" ]; then
+      sleep $SLEEP  # Allow system time to settle
+      # Usage: ./drive.sh <run name> <cpu list> <clients list> <duration> <app> <url> <instances>
+      ./drive.sh compare_$run $CPUS $CLIENTS $DURATION ${IMPLS[$j]} $URL ${INSTANCES[$j]} > $out 2>&1
+    fi
     THROUGHPUT[$runNo]=`grep 'Requests/sec' $out | awk '{print $2}'`
     CPU[$runNo]=`grep 'Average CPU util' $out | awk '{print $4}'`
     MEM[$runNo]=`grep 'RSS (kb)' $out | sed -e's#.*end=\([0-9][0-9]*\).*#\1#' | awk '{total += $1} END {print total}'`
