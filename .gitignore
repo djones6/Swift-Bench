@@ -1,5 +1,5 @@
-jmeter
-wrk
 /runs
+/compares
 error_report.log
 jmeter.log
+nohup.out

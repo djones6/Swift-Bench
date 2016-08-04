@@ -9,11 +9,13 @@ if [ -z "$1" ]; then
   echo "Usage: ./compare.sh <impl1> ... <implN>"
   echo "Please specify fully qualified path to the application."
   echo "Optionally, set following environment variables:"
-  echo "  ITERATIONS: number of repetitions of each implementation (default: 3)"
+  echo "  ITERATIONS: number of repetitions of each implementation (default: 5)"
   echo "  URL: url to drive load against (default: http://127.0.0.1:8080/plaintext)"
   echo "  CPUS: list of CPUs to affinitize to (default: 0,1,2,3)"
   echo "  CLIENTS: # of concurrent clients (default: 128)"
-  echo "  DURATION: time (sec) to apply load (default: 10)"
+  echo "  DURATION: time (sec) to apply load (default: 30)"
+  echo "  SLEEP: time (sec) to wait between tests (default: 5)"
+  echo "  RUNNAME: name of directory to store results (default: current date and time)"
   exit 1
 fi
 
@@ -56,6 +58,13 @@ if [ -z "$SLEEP" ]; then
   SLEEP=5
 fi
 
+# Define a location to store the output (default: compares/<date>-<time>)
+if [ -z "$RUNNAME" ]; then
+  RUNNAME=`date +'%Y%m%d-%H%M%S'`
+fi
+WORKDIR="compares/$RUNNAME"
+echo "Results will be stored in $WORKDIR"
+
 # Check requested applications all exist
 let IMPLC=0
 for implstr in $*; do
@@ -72,18 +81,23 @@ for implstr in $*; do
   echo "Implementation $IMPLC: ${IMPLS[$IMPLC]}"
 done
 
+# Create a directory to store run logs
+mkdir -p $WORKDIR/runs
+
 # Execute tests
 for i in `seq 1 $ITERATIONS`; do
   for j in `seq 1 $IMPLC`; do
     echo "Iteration $i: Implementation $j"
     run="${i}_${j}"
     let runNo=($i-1)*$IMPLC+$j
-    out="compare_$run.out"
+    out="$WORKDIR/compare_$run.out"
     # set RECOMPARE to skip running + just re-parse output files from an earlier run
     if [ -z "$RECOMPARE" ]; then
       sleep $SLEEP  # Allow system time to settle
       # Usage: ./drive.sh <run name> <cpu list> <clients list> <duration> <app> <url> <instances>
       ./drive.sh compare_$run $CPUS $CLIENTS $DURATION ${IMPLS[$j]} $URL ${INSTANCES[$j]} > $out 2>&1
+    else
+      echo ./drive.sh compare_$run $CPUS $CLIENTS $DURATION ${IMPLS[$j]} $URL ${INSTANCES[$j]}
     fi
     THROUGHPUT[$runNo]=`grep 'Requests/sec' $out | awk '{print $2}'`
     CPU[$runNo]=`grep 'Average CPU util' $out | awk '{print $4}'`
@@ -91,6 +105,8 @@ for i in `seq 1 $ITERATIONS`; do
     LATAVG[$runNo]=`grep 'Latency  ' $out | awk '{print $2}' | awk '/[0-9\.]+s/ { print $1 * 1000 } /[0-9\.]+ms/ { print $1 / 1 } /[0-9\.]+us/ { print $1/1000 }'`
     LATMAX[$runNo]=`grep 'Latency  ' $out | awk '{print $4}' | awk '/[0-9\.]+s/ { print $1 * 1000 } /[0-9\.]+ms/ { print $1 / 1 } /[0-9\.]+us/ { print $1/1000 }'`
     echo "Throughput = ${THROUGHPUT[$runNo]} CPU = ${CPU[$runNo]} MEM = ${MEM[$runNo]}  Latency: avg = ${LATAVG[$runNo]}ms max = ${LATMAX[$runNo]}ms"
+    # Archive the results from this run
+    mv runs/compare_$run $WORKDIR/runs/
   done
 done
 
