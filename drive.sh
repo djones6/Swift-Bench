@@ -472,7 +472,11 @@ function setup() {
     ;;
   valgrind)
     let DETAILEDFREQ=$DURATION/2
-    PROFILER_CMD="valgrind --tool=massif --time-unit=ms --max-snapshots=100 --detailed-freq=$DETAILEDFREQ"
+    # Threshold determines level of detail in the report. A smaller threshold (eg. 0.1) is useful
+    # if allocations are spread evenly across a number of similar paths, and each path falls under
+    # the default 1% threshold.
+    VALGRIND_THRESHOLD="1"
+    PROFILER_CMD="valgrind --tool=massif --threshold=$VALGRIND_THRESHOLD --time-unit=ms --max-snapshots=100 --detailed-freq=$DETAILEDFREQ"
     ;;
   *)
     PROFILER_CMD=""
@@ -566,8 +570,13 @@ function teardown() {
     cat perf-report.${FIRST_APP_PID}.txt | swift-demangle | sed -e's#  *$##' > perf-report.${FIRST_APP_PID}.demangled.txt
     ;;
   perf-cg)
+    # Generate a profile with --no-children so it is sorted by self (equivalent to a flat profile,
+    # but with callgraph information)
     perf report --no-children -k /usr/lib/debug/boot/vmlinux-`uname -r` > perf-cg-report.${FIRST_APP_PID}.txt
     cat perf-cg-report.${FIRST_APP_PID}.txt | swift-demangle | sed -e's#  *$##' > perf-cg-report.${FIRST_APP_PID}.demangled.txt
+    # Generate a second flat profile from the same sampling data, for convenience
+    perf report --max-stack=1 --no-children -k /usr/lib/debug/boot/vmlinux-`uname -r` > perf-report.${FIRST_APP_PID}.txt
+    cat perf-report.${FIRST_APP_PID}.txt | swift-demangle | sed -e's#  *$##' > perf-report.${FIRST_APP_PID}.demangled.txt
     ;;
   perf-idle)
     sudo perf inject -v -s -i perf.data.raw -o perf.data
@@ -585,7 +594,7 @@ function teardown() {
     cat oprofile.${FIRST_APP_PID}.opm | swift-demangle > oprofile.${FIRST_APP_PID}.demangled.opm
     ;;
   valgrind)
-    ms_print massif.out.${FIRST_APP_PID} > msprint.${FIRST_APP_PID}.txt
+    ms_print --threshold=$VALGRIND_THRESHOLD massif.out.${FIRST_APP_PID} > msprint.${FIRST_APP_PID}.txt
     cat msprint.${FIRST_APP_PID}.txt | swift-demangle > msprint.${FIRST_APP_PID}.demangled.txt
     ;;
   *)
