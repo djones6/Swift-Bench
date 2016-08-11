@@ -1,0 +1,14 @@
+#!/bin/bash
+  MPID=$1
+
+  echo "monitoring process ${MYPID}"
+  cd /proc/${MPID}/task
+
+  while true; do
+    numt=`ls -1 | wc -l`
+    pr=`grep procs_running /proc/stat | cut -d' ' -f2`
+    echo -n "${pr}, ${numt}"
+    for f in *; do grep State $f/status ; done | cut -c8 | awk '{a[$0]++}; END {printf(", %2d, %2d\n", a["R"], a["S"]);}'
+    sleep 1;
+    [[ ! -e /proc/${MPID} ]] && break
+  done

@@ -195,6 +195,8 @@ function monitor_cpu {
       PRE_CPU=(`getcputime $APP_PID`)
       PRE_CPUS="$PRE_CPU,$PRE_CPUS"
     done
+    $WORK_DIR/showpidv $APP_PID > thread_stats.$SUFFIX &
+    THREADS_PID=$!
     ;;
   Darwin)
     # Monitor overall CPU utilization using top
@@ -255,6 +257,8 @@ function end_monitor_cpu {
       let NUM_CPUS=$NUM_CPUS+1
     done
     echo "Average CPU util: `echo $LIST_CPUS | awk -v n=$NUM_CPUS -v t=$TOTAL_CPU '{printf "%.1f",t/n}'` %"
+    kill $THREADS_PID
+    wait $THREADS_PID 2>/dev/null
     ;;
   Darwin)
     # Diff CPU cycles after load applied
