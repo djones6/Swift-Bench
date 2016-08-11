@@ -106,7 +106,9 @@ for i in `seq 1 $ITERATIONS`; do
     LATMAX[$runNo]=`grep 'Latency  ' $out | awk '{print $4}' | awk '/[0-9\.]+s/ { print $1 * 1000 } /[0-9\.]+ms/ { print $1 / 1 } /[0-9\.]+us/ { print $1/1000 }'`
     echo "Throughput = ${THROUGHPUT[$runNo]} CPU = ${CPU[$runNo]} MEM = ${MEM[$runNo]}  Latency: avg = ${LATAVG[$runNo]}ms max = ${LATMAX[$runNo]}ms"
     # Archive the results from this run
-    mv runs/compare_$run $WORKDIR/runs/
+    if [ -z "$RECOMPARE" ]; then
+      mv runs/compare_$run $WORKDIR/runs/
+    fi
   done
 done
 
