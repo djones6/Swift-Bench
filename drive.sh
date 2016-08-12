@@ -357,6 +357,23 @@ function summarize_driver_output {
   esac
 }
 
+# Summarize some Swift stats from a flat perf profile:
+# - overhead of ARC (all symbols containing 'swift_release' or 'swift_retain')
+# - overhead of malloc/free (all symbols in libc containing 'malloc' or 'free')
+# - time spent in libswiftCore.so (excluding release/retain)
+# - time spent in libFoundation.so (excluding release/retain)
+function summarize_perf {
+  REPORT=$1
+  ARC_OVERHEAD=`cat $REPORT | grep -e 'swift_release' -e 'swift_retain' | awk '{x += $1} END {print x}'`
+  echo "Overhead from ARC (release/retain): $ARC_OVERHEAD %"
+  MALLOC_OVERHEAD=`cat $REPORT | grep 'libc-[0-9\.]*\.so' | grep -e 'malloc' -e 'free' | awk '{x += $1} END {print x}'`
+  echo "Overhead of malloc/free: $MALLOC_OVERHEAD %"
+  LIBSWIFT_TIME=`cat $REPORT | grep -e 'libswiftCore.so' | grep -v -e 'swift_release' -e 'swift_retain' | awk '{x += $1} END {print x}'`
+  echo "Time spent in libswiftCore.so: $LIBSWIFT_TIME %"
+  LIBFOUND_TIME=`cat $REPORT | grep -e 'libFoundation.so' | grep -v -e 'swift_release' -e 'swift_retain' | awk '{x += $1} END {print x}'`
+  echo "Time spent in libFoundation.so: $LIBFOUND_TIME %"
+}
+
 #
 # Measures the server using a specified number of clients + duration.
 #
@@ -572,6 +589,7 @@ function teardown() {
   perf)
     perf report -k /usr/lib/debug/boot/vmlinux-`uname -r` > perf-report.${FIRST_APP_PID}.txt
     cat perf-report.${FIRST_APP_PID}.txt | swift-demangle | sed -e's#  *$##' > perf-report.${FIRST_APP_PID}.demangled.txt
+    summarize_perf "perf-report.${FIRST_APP_PID}.demangled.txt"
     ;;
   perf-cg)
     # Generate a profile with --no-children so it is sorted by self (equivalent to a flat profile,
@@ -581,6 +599,7 @@ function teardown() {
     # Generate a second flat profile from the same sampling data, for convenience
     perf report --max-stack=1 --no-children -k /usr/lib/debug/boot/vmlinux-`uname -r` > perf-report.${FIRST_APP_PID}.txt
     cat perf-report.${FIRST_APP_PID}.txt | swift-demangle | sed -e's#  *$##' > perf-report.${FIRST_APP_PID}.demangled.txt
+    summarize_perf "perf-report.${FIRST_APP_PID}.demangled.txt"
     ;;
   perf-idle)
     sudo perf inject -v -s -i perf.data.raw -o perf.data
