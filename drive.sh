@@ -110,6 +110,12 @@ if [ -z "$1" -o "$1" == "--help" ]; then
   echo "  url = URL to drive load against (or jmeter script)"
   echo "  instances = number of copies of <app> to start"
   echo "  rate list = comma-separated list of constant load levels (rps) to drive (only for wrk2)"
+  echo "Optionally, set:"
+  echo "  DRIVER to one of: $DRIVER_CHOICES"
+  echo "  PROFILER to one of: $PROFILER_CHOICES"
+  echo "  CLIENT to a hostname used to execute the load driver (must have $DRIVER installed)"
+  echo "   - default is to execute on localhost"
+  echo ""
   exit 1
 fi
 # CPU list
@@ -148,6 +154,10 @@ if [ "$DRIVER" = "wrk2" -a -z "$WORK_RATE" -a -z "$8" ]; then
   echo "WORK_RATE not specified, using default of '$WORK_RATE'"
 elif [ -n "$8" ]; then
   WORK_RATE=$8
+fi
+# Remote server for driving load (default: start locally)
+if [ -z "$CLIENT" ]; then
+  CLIENT="localhost"
 fi
 
 #
@@ -394,18 +404,28 @@ function do_sample {
   # Start recording CPU utilization 
   monitor_cpu $NUMCLIENTS $CPULIST $DURATION
 
+  case $CLIENT in
+  localhost)
+    DRIVER_PREAMBLE=""
+    ;;
+  *)
+    DRIVER_PREAMBLE="ssh -t $CLIENT "   # Execute driver remotely
+    DRIVER_AFFINITY=""                  # Affinity may not be appropriate for remote machine
+    ;;
+  esac
+
   # Execute driver
   case $DRIVER in
   jmeter)
     SCRIPT=$URL  # Until I think of something better
-    echo $DRIVER_AFFINITY jmeter -n -t ${SCRIPT} -q $WORK_DIR/user.properties -JTHREADS=$NUMCLIENTS -JDURATION=$DURATION -JRAMPUP=0 -JWARMUP=0 | tee results.$NUMCLIENTS
-    $DRIVER_AFFINITY jmeter -n -t ${SCRIPT} -q $WORK_DIR/user.properties -JTHREADS=$NUMCLIENTS -JDURATION=$DURATION -JRAMPUP=0 -JWARMUP=0 >> results.$NUMCLIENTS
+    echo ${DRIVER_PREAMBLE}${DRIVER_AFFINITY} jmeter -n -t ${SCRIPT} -q $WORK_DIR/user.properties -JTHREADS=$NUMCLIENTS -JDURATION=$DURATION -JRAMPUP=0 -JWARMUP=0 | tee results.$NUMCLIENTS
+    ${DRIVER_PREAMBLE}${DRIVER_AFFINITY} jmeter -n -t ${SCRIPT} -q $WORK_DIR/user.properties -JTHREADS=$NUMCLIENTS -JDURATION=$DURATION -JRAMPUP=0 -JWARMUP=0 >> results.$NUMCLIENTS
     ;;
   wrk)
     # Number of connections must be >= threads
     [[ ${WORK_THREADS} -gt ${NUMCLIENTS} ]] && WORK_THREADS=${NUMCLIENTS}
-    echo $DRIVER_AFFINITY wrk --timeout 30 --latency -t${WORK_THREADS} -c${NUMCLIENTS} -d${DURATION}s ${URL} | tee results.$NUMCLIENTS
-    $DRIVER_AFFINITY wrk --timeout 30 --latency -t${WORK_THREADS} -c${NUMCLIENTS} -d${DURATION}s ${URL} 2>&1 | tee -a results.$NUMCLIENTS
+    echo ${DRIVER_PREAMBLE}${DRIVER_AFFINITY} wrk --timeout 30 --latency -t${WORK_THREADS} -c${NUMCLIENTS} -d${DURATION}s ${URL} | tee results.$NUMCLIENTS
+    ${DRIVER_PREAMBLE}${DRIVER_AFFINITY} wrk --timeout 30 --latency -t${WORK_THREADS} -c${NUMCLIENTS} -d${DURATION}s ${URL} 2>&1 | tee -a results.$NUMCLIENTS
     # For no keepalive you can do: -H "Connection: close"
     ;;
   wrk2)
@@ -413,8 +433,8 @@ function do_sample {
     [[ ${WORK_THREADS} -gt ${NUMCLIENTS} ]] && WORK_THREADS=${NUMCLIENTS}
     # Because wrk2 uses a 10 second calibration period, add 10 seconds to the duration
     let WRK2_DURATION=$DURATION+10
-    echo $DRIVER_AFFINITY wrk2 --timeout 30 --latency -R ${RATE} -t${WORK_THREADS} -c${NUMCLIENTS} -d${WRK2_DURATION}s ${URL} | tee results.$NUMCLIENTS
-    $DRIVER_AFFINITY wrk2 --timeout 30 --latency -R ${RATE} -t${WORK_THREADS} -c${NUMCLIENTS} -d${WRK2_DURATION}s ${URL} 2>&1 | tee -a results.$NUMCLIENTS
+    echo ${DRIVER_PREAMBLE}${DRIVER_AFFINITY} wrk2 --timeout 30 --latency -R ${RATE} -t${WORK_THREADS} -c${NUMCLIENTS} -d${WRK2_DURATION}s ${URL} | tee results.$NUMCLIENTS
+    ${DRIVER_PREAMBLE}${DRIVER_AFFINITY} wrk2 --timeout 30 --latency -R ${RATE} -t${WORK_THREADS} -c${NUMCLIENTS} -d${WRK2_DURATION}s ${URL} 2>&1 | tee -a results.$NUMCLIENTS
     # For no keepalive you can do: -H "Connection: close"
     ;;
   *)
