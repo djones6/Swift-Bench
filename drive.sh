@@ -51,6 +51,10 @@ DRIVER_CHOICES="wrk wrk2 jmeter"
 PROFILER_CHOICES="valgrind oprofile oprofile-sys perf perf-cg perf-idle"
 #PROFILER=""
 
+# Flags to enable certain behaviours from this script
+SUDO_PERMISSIONS=yes       # Attempt temporary system config actions that require sudo?
+OSX_DISABLE_FIREWALL=yes   # Disable OSX firewall during test? (requires sudo)
+
 SUPPORTED_OSES="Linux Darwin"
 
 # Customize this section appropriately for your hardware
@@ -425,9 +429,11 @@ function do_sample {
 }
 
 #
-# Perform temporary environment changes required for testing
+# Apply temporary system configuration changes beneficial for benchmarking
+# Note: these require sudo permission (preferably passwordless)
+# If you do not have sudo, set SUDO_PERMISSIONS=no above.
 #
-function setup() {
+function sudosetup() {
   case `uname` in
   Linux)
     # For Perfect, I needed to enable tcp_tw_reuse and tcp_tw_recycle
@@ -461,9 +467,23 @@ function setup() {
       sudo sysctl -w net.inet.ip.portrange.first=16384
       NEW_FIRST_PORT=`sysctl -n net.inet.ip.portrange.first`
     fi
+    # Disable firewall during the test
+    FIREWALL_STATE=`sudo defaults read /Library/Preferences/com.apple.alf globalstate`
+    if [ $FIREWALL_STATE -ne 0 ]; then
+      echo "Disabling firewall during test"
+      sudo defaults write /Library/Preferences/com.apple.alf globalstate -int 0
+      sudo launchctl unload /System/Library/LaunchDaemons/com.apple.alf.agent.plist
+      sudo launchctl load /System/Library/LaunchDaemons/com.apple.alf.agent.plist
+    fi
     ;;
   esac
+}
 
+#
+# Perform temporary environment changes required for testing
+# Note, perf-idle and oprofile-sys require sudo permission.
+#
+function setup() {
   # Profiling with 'oprofile', 'valgrind' and 'perf' will only work properly for 1 instance
   # of the app. 'oprofile-sys' should work with any number.
   case $PROFILER in
@@ -563,9 +583,9 @@ function shutdown() {
 }
 
 #
-# Restore any temporary environment changes
+# Revert any temporary configuration changes performed by sudosetup()
 #
-function teardown() {
+function sudoteardown() {
   case `uname` in
   Linux)
     sudo su -c "echo $TCP_TW_REUSE > /proc/sys/net/ipv4/tcp_tw_reuse"
@@ -580,9 +600,19 @@ function teardown() {
       echo "Restoring ephemeral port range"
       sudo sysctl -w net.inet.ip.portrange.first=$FIRST_EPHEM_PORT
     fi
-    ;;
+    if [ $FIREWALL_STATE -ne 0 ]; then
+      echo "Restoring firewall state to $FIREWALL_STATE"
+      sudo defaults write /Library/Preferences/com.apple.alf globalstate -int $FIREWALL_STATE
+      sudo launchctl unload /System/Library/LaunchDaemons/com.apple.alf.agent.plist
+      sudo launchctl load /System/Library/LaunchDaemons/com.apple.alf.agent.plist
+    fi
   esac
+}
 
+#
+# Restore any temporary environment changes
+#
+function teardown() {
   # Profiling output will be named with the pid of the first app instance
   FIRST_APP_PID=`echo $APP_PIDS | cut -d' ' -f1`
   case $PROFILER in
@@ -662,6 +692,9 @@ echo "Application: $APP_CMD"
 echo "URL: $URL"
 
 setup
+if [ "$SUDO_PERMISSIONS" = "yes" ]; then
+  sudosetup
+fi
 startup
 
 # Execute driver and associated monitoring for each number of clients
@@ -681,6 +714,9 @@ for SAMPLE in `echo $SAMPLES | tr ',' ' '`; do
 done
 
 shutdown
+if [ "$SUDO_PERMISSIONS" = "yes" ]; then
+  sudoteardown
+fi
 teardown
 
 # Summarize RSS growth
