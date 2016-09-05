@@ -191,7 +191,7 @@ function monitor_cpu {
   DURATION=$3
  
   # Ensure at least one report generated for short runs
-  CPU_SAMP_FREQ=5
+  CPU_SAMP_FREQ=2
   if [ $DURATION -lt $CPU_SAMP_FREQ ]; then
     CPU_SAMP_FREQ=$DURATION
   fi
@@ -214,8 +214,9 @@ function monitor_cpu {
     ;;
   Darwin)
     # Monitor overall CPU utilization using top
+    # Sleep briefly to make the first sample more representative.
     #
-    top -F -R -o cpu -n 5 -ncols 10 -s $CPU_SAMP_FREQ > top.$SUFFIX &
+    (sleep 1 ; top -F -R -o cpu -n 5 -ncols 10 -s $CPU_SAMP_FREQ > top.$SUFFIX) &
     TOP_PID=$!
     # Capture CPU cycles consumed by server before we apply load
     for APP_PID in $APP_PIDS; do
