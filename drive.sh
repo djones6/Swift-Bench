@@ -216,7 +216,7 @@ function monitor_cpu {
     # Monitor overall CPU utilization using top
     # Sleep briefly to make the first sample more representative.
     #
-    (sleep 1 ; top -F -R -o cpu -n 5 -ncols 10 -s $CPU_SAMP_FREQ > top.$SUFFIX) &
+    (sleep 1 ; exec top -F -R -o cpu -n 5 -ncols 10 -s $CPU_SAMP_FREQ > top.$SUFFIX) &
     TOP_PID=$!
     # Capture CPU cycles consumed by server before we apply load
     for APP_PID in $APP_PIDS; do
