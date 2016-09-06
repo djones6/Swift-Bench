@@ -4,13 +4,13 @@ It is essentially a small collection of bash scripts, calling out to standard to
 
 This is firmly a work in progress and growing features as I need them. Contributions, fixes and improvements are welcome!
 
-###Requirements:
+##Requirements:
 On Mac, there are no prereqs other than a suitable workload driver (see below).
 On Linux, you may additionally want to install:
 - `mpstat` (Ubuntu: `sudo apt-get install sysstat`)
 - `numactl` if not already installed (`sudo apt-get install numactl)`
 
-###Usage:
+##Usage:
 `./drive.sh run_name [cpu list] [clients list] [duration] [app] [url] [instances] [rate list]`
 - cpu list = comma-separated list of CPUs to affinitize the application to (eg: 0,1,2,3)
   - only supported on Linux. This param is ignored on Mac
@@ -23,10 +23,12 @@ On Linux, you may additionally want to install:
 
 Results and output files are stored under a subdirectory `runs/<run name>/`
 
+###Comparing multiple implementations:
+
 `./compare.sh [app1] ... [appN]`
 - Wrapper for `drive.sh`, running a compare of multiple applications and repeating for a number of iterations. At the end of the runs, a table of results is produced for easy consumption.
-- The output from the runs is stored in `runs/compare_<iteration no>_<app no>/`
-- The original output from `drive.sh` is preserved in a series of files named `compare_<iteration no>_<app no>.out`.
+- The output from the runs is stored in `compares/<date>/runs/compare_<iteration no>_<app no>/`
+- The original output from `drive.sh` is preserved in a series of files named `compares/<date>/compare_<iteration no>_<app no>.out`.
 - Compares can be customized by setting various environment variables:
 ```
   ITERATIONS: number of repetitions of each implementation (default: 5)
@@ -35,7 +37,9 @@ Results and output files are stored under a subdirectory `runs/<run name>/`
   CLIENTS: # of concurrent clients (default: 128)
   DURATION: time (sec) to apply load (default: 30)
 ```
-###Example output
+If you require multiple instances of the application, specify the application path and number of instances separated by a comma, for example: `/path/to/executable,iterations`
+
+##Example output
 
 Output from `compare.sh` is in the following format:
 ```
@@ -47,16 +51,33 @@ Implementation | Avg Throughput | Max Throughput | Avg CPU | Avg RSS (kb)
  ```
 This is a simple summarization of the output from each run of each implementation. Further details for each measurement can be found by examining the `compare_<iteration no>_<app no>.out` files.
 
-###Workload driver
+###Regenerating the output from a previous compare
 
-You can set the environment variable DRIVER to either
+As a convenience, to regenerate the output from a previous compare, use:
+`./recompare.sh <date>` where `<date>` is one of the subdirectories under `compares`.
+
+Recompare will automatically determine which applications you compared. However, if you set any environment variables for your original compare (such as changing the number of iterations), you must set them to the same values when running recompare.
+
+##Workload driver
+
+You can set the environment variable `DRIVER` to either
 - wrk (https://github.com/wg/wrk) - highly efficient, variable-rate load generator
 - wrk2 (https://github.com/giltene/wrk2) - fixed-rate wrk variant with accurate latency stats
 - jmeter (http://jmeter.apache.org/) - highly customizable Java-based load generator
 
 By default, 'wrk' is used to drive load.  Ensure that the command is available in your PATH.
 
-###Profiling
+###Driving requests remotely
+
+You can set the environment variable `CLIENT` to the hostname of another server which will act as the client driver. In this case, you must also set the URL parmeter to be appropriate from the client server's perspective. As an example:
+- `myserver.mydomain.com` - system under test (execute the driver script here)
+- `myclient.mydomain.com` - system to use as a client
+- `env CLIENT=myclient ./drive.sh ..... http://myserver:8080/plaintext`
+
+When `CLIENT` is set, the driver command will be issued via `ssh -t $CLIENT`. In order for this to work, you must allow `myserver` to issue SSH commands on `myclient` with the same userid and without prompting for a password. This can typically be achieved through the use of public key authentication.
+Also, you must ensure that the workload driver `wrk` is installed and present on your `PATH` on the client system.
+
+##Profiling
 
 Various profiling options are provided for Linux (you must install these tools as appropriate on your system, all are readily available through the package manager).
 
