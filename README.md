@@ -23,6 +23,13 @@ On Linux, you may additionally want to install:
 
 Results and output files are stored under a subdirectory `runs/<run name>/`
 
+###Customizing the drive.sh script
+
+Before using this script, there are a number of hard-coded settings that you should review and customize for your system:
+- On Linux, you will need to adjust the affinity settings (`numactl ...`) appropriately for the NUMA topology of your system, or remove them if you do not want to use this facility.  These have no effect on Mac.
+- A number of operating system tuning parameters will be set by the script during workload execution if your userid has `sudo` permission. This works best if sudo can be executed without a password. If you cannot or do not want to use these facilities, change the `SUDO_PERMISSIONS` setting to `no`.
+- On Mac, the script will attempt to disable the firewall during testing.  If you do not want it to do this, change the `OSX_DISABLE_FIREWALL` setting to `no`.
+
 ###Comparing multiple implementations:
 
 `./compare.sh [app1] ... [appN]`
