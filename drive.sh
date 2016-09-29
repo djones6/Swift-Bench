@@ -505,6 +505,8 @@ function sudosetup() {
 # Note, perf-idle and oprofile-sys require sudo permission.
 #
 function setup() {
+  # Enable corefile generation (for debugging failed runs)
+  ulimit -c unlimited
   # Profiling with 'oprofile', 'valgrind' and 'perf' will only work properly for 1 instance
   # of the app. 'oprofile-sys' should work with any number.
   case $PROFILER in

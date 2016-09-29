@@ -71,7 +71,7 @@ for implstr in $*; do
   # Parse impl string into executable,instances
   impl=`echo $implstr | cut -d',' -f1`
   instances=`echo $implstr | cut -d',' -f2 -s`
-  if [ ! -e "$impl" ]; then
+  if [ ! -e "$impl" -a -z "$RECOMPARE" ]; then
     echo "Error: $impl is not executable"
     exit 1
   fi
