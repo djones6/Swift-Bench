@@ -205,7 +205,7 @@ function monitor_cpu {
     # Capture CPU cycles consumed by server before we apply load
     # (this avoids counting any CPU costs incurred during startup)
     #
-    for APP_PID in $APP_PIDS; do
+    for APP_PID in $APP_PIDS $CHILD_PIDS; do
       PRE_CPU=(`getcputime $APP_PID`)
       PRE_CPUS="$PRE_CPU,$PRE_CPUS"
     done
@@ -219,7 +219,7 @@ function monitor_cpu {
     (sleep 1 ; exec top -F -R -o cpu -n 5 -ncols 10 -s $CPU_SAMP_FREQ > top.$SUFFIX) &
     TOP_PID=$!
     # Capture CPU cycles consumed by server before we apply load
-    for APP_PID in $APP_PIDS; do
+    for APP_PID in $APP_PIDS $CHILD_PIDS; do
       # Output 2 values: user, total
       PRE_CPU=`ps -p $APP_PID -o utime=,cputime= | awk '{print $1 " " $2}'`
       PRE_CPUS="$PRE_CPU,$PRE_CPUS"
@@ -241,7 +241,7 @@ function end_monitor_cpu {
     # Diff CPU cycles after load applied
     let i=0
     echo "CPU consumed per instance:" | tee cpu.$SUFFIX
-    for APP_PID in $APP_PIDS; do
+    for APP_PID in $APP_PIDS $CHILD_PIDS; do
       let i=$i+1
       PRE_CPU=`echo $PRE_CPUS | cut -d',' -f${i}`
       POST_CPU=(`getcputime $APP_PID`)
@@ -279,7 +279,7 @@ function end_monitor_cpu {
     # Diff CPU cycles after load applied
     let i=0
     echo "CPU consumed per instance:" | tee cpu.$SUFFIX
-    for APP_PID in $APP_PIDS; do
+    for APP_PID in $APP_PIDS $CHILD_PIDS; do
       let i=$i+1
       PRE_CPU=`echo $PRE_CPUS | cut -d',' -f${i}`
       POST_CPU=`ps -p $APP_PID -o utime=,cputime= | awk '{print $1 " " $2}'`
@@ -561,17 +561,37 @@ function startup() {
     APP_PIDS="$! $APP_PIDS"
   done
 
-  # Wait for servers to be ready (TODO: something better than 'sleep 1')
+  # Wait for servers to be ready (up to 10 seconds)
+  # - use curl to detect when server is ready to respond
+  let MAX_WAIT_TIME=10
+  let WAIT_SO_FAR=0
+  while [ $WAIT_SO_FAR -lt $MAX_WAIT_TIME ]; do
+    sleep 1
+    let WAIT_SO_FAR=WAIT_SO_FAR+1
+    ${DRIVER_PREAMBLE} curl --head $URL >/dev/null 2>&1 && break || echo "Waiting for server - $WAIT_SO_FAR seconds"
+  done
   echo "App pids=$APP_PIDS"
-  sleep 1
+
+  # Identify any child processes (eg. when using Node.js cluster)
+  CHILD_PIDS=""
+  for APP_PID in $APP_PIDS; do
+    MORE_CHILD_PIDS=`ps -o ppid,pid | grep -e"^ *$APP_PID " | cut -d' ' -f2 | xargs echo`
+    if [ ! -z "$MORE_CHILD_PIDS" ]; then
+      CHILD_PIDS="$MORE_CHILD_PIDS $CHILD_PIDS"
+    fi
+  done
+  if [ ! -z "$CHILD_PIDS" ]; then
+    echo "Child pids=$CHILD_PIDS"
+  fi
 
   # monitor RSS
   let i=0
-  for APP_PID in $APP_PIDS; do
+  for APP_PID in $APP_PIDS $CHILD_PIDS; do
     let i=$i+1
     $WORK_DIR/monitorRSS.sh $APP_PID 1 > rssout${i}.txt &
     RSSMON_PIDS="$! $RSSMON_PIDS"
   done
+  RSSMON_COUNT=$i
 }
 
 #
@@ -684,18 +704,18 @@ function teardown() {
 function terminate() {
   echo "Killing app: $APP_PIDS"
   # Kill each app instance 
-  for APP_PID in $APP_PIDS; do
-    kill $APP_PID
+  for APP_PID in $APP_PIDS $CHILD_PIDS; do
+    kill $APP_PID 2>/dev/null
   done
   echo "Killing monitors: $RSSMON_PIDS $MPSTAT_PID"
-  kill $RSSMON_PIDS
-  kill $MPSTAT_PID
+  kill $RSSMON_PIDS 2>/dev/null
+  kill $MPSTAT_PID 2>/dev/null
   echo "Processes killed"
   teardown
   # Kill anything with the same PGID as our PID (syntax: -PID)
   trap - SIGTERM
   echo "Killing anything with our pgid"
-  kill -- -$$
+  kill -- -$$ 2>/dev/null
   exit 1
 }
 
@@ -744,9 +764,10 @@ teardown
 
 # Summarize RSS growth
 echo "Resident set size (RSS) summary:" | tee mem.log
-for i in `seq 1 $INSTANCES`; do
+for i in `seq 1 $RSSMON_COUNT`; do
   RSS_START=`head -n 1 rssout${i}.txt | awk '{print $1}'`
   RSS_END=`tail -n 1 rssout${i}.txt | awk '{print $1}'`
+  RSS_HIGH_WATER_MARK=`awk -v max=0 '{if($1>max){max=$1}}END{print max}' rssout${i}.txt`
   let RSS_DIFF=$RSS_END-$RSS_START
-  echo "$i: RSS (kb): start=$RSS_START end=$RSS_END delta=$RSS_DIFF" | tee -a mem.log
+  echo "$i: RSS (kb): start=$RSS_START end=$RSS_END delta=$RSS_DIFF max=$RSS_HIGH_WATER_MARK" | tee -a mem.log
 done
