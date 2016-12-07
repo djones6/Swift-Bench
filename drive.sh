@@ -735,6 +735,7 @@ if [ -n "$WORK_RATE" ]; then
 fi
 echo "Application: $APP_CMD"
 echo "URL: $URL"
+echo "Client machine: $CLIENT"
 
 setup
 if [ "$SUDO_PERMISSIONS" = "yes" ]; then

@@ -11,11 +11,12 @@ if [ -z "$1" ]; then
   echo "Optionally, set following environment variables:"
   echo "  ITERATIONS: number of repetitions of each implementation (default: 5)"
   echo "  URL: url to drive load against (default: http://127.0.0.1:8080/plaintext)"
+  echo "  CLIENT: server to use to execute load driver (default: localhost)"
   echo "  CPUS: list of CPUs to affinitize to (default: 0,1,2,3)"
   echo "  CLIENTS: # of concurrent clients (default: 128)"
   echo "  DURATION: time (sec) to apply load (default: 30)"
   echo "  SLEEP: time (sec) to wait between tests (default: 5)"
-  echo "  RUNNAME: name of directory to store results (default: current date and time)"
+  echo "  RUNNAME: name of directory to store results (default: compares/DDDDMMYY-HHmmss)"
   exit 1
 fi
 
@@ -38,6 +39,10 @@ if [ -z "$URL" ]; then
   echo "Using default URL: $URL"
 else
   echo "Using URL: $URL"
+fi
+
+if [ ! -z "$CLIENT" ]; then
+  echo "Using CLIENT: $CLIENT"
 fi
 
 if [ -z "$CLIENTS" ]; then
@@ -73,9 +78,9 @@ fi
 
 # Define a location to store the output (default: compares/<date>-<time>)
 if [ -z "$RUNNAME" ]; then
-  RUNNAME=`date +'%Y%m%d-%H%M%S'`
+  RUNNAME="compares/`date +'%Y%m%d-%H%M%S'`"
 fi
-WORKDIR="compares/$RUNNAME"
+WORKDIR="$RUNNAME"
 echo "Results will be stored in $WORKDIR"
 
 # Check requested applications all exist
