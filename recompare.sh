@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # Grep the applications executed in the latest compare and re-parse without re-running
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"

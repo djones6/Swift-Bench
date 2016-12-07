@@ -39,7 +39,6 @@ DURATION=$4
 APP_CMD=$5
 URL=$6
 INSTANCES=$7
-WORK_DIR=$PWD
 
 # Select workload driver (client simulator) with DRIVER env variable
 # (default: wrk)
@@ -99,6 +98,9 @@ else
   fi
 fi
 
+# Determine location of this script
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
 # Consume cmdline args (simplest possible implementation for now)
 if [ -z "$1" -o "$1" == "--help" ]; then
   echo "Usage: $0 <run name> <cpu list> <clients list> <duration> <app> <url> <instances> <rate list>"
@@ -135,7 +137,7 @@ if [ -z "$4" ]; then
 fi
 # App
 if [ -z "$5" ]; then
-  APP_CMD="$WORK_DIR/kitura"
+  APP_CMD="$SCRIPT_DIR/kitura"
   echo "App not specified, using default of '$APP_CMD'"
 fi
 # URL
@@ -209,7 +211,7 @@ function monitor_cpu {
       PRE_CPU=(`getcputime $APP_PID`)
       PRE_CPUS="$PRE_CPU,$PRE_CPUS"
     done
-    $WORK_DIR/showpidv $APP_PID > thread_stats.$SUFFIX &
+    $SCRIPT_DIR/showpidv $APP_PID > thread_stats.$SUFFIX &
     THREADS_PID=$!
     ;;
   Darwin)
@@ -419,8 +421,8 @@ function do_sample {
   case $DRIVER in
   jmeter)
     SCRIPT=$URL  # Until I think of something better
-    echo ${DRIVER_PREAMBLE}${DRIVER_AFFINITY} jmeter -n -t ${SCRIPT} -q $WORK_DIR/user.properties -JTHREADS=$NUMCLIENTS -JDURATION=$DURATION -JRAMPUP=0 -JWARMUP=0 | tee results.$NUMCLIENTS
-    ${DRIVER_PREAMBLE}${DRIVER_AFFINITY} jmeter -n -t ${SCRIPT} -q $WORK_DIR/user.properties -JTHREADS=$NUMCLIENTS -JDURATION=$DURATION -JRAMPUP=0 -JWARMUP=0 >> results.$NUMCLIENTS
+    echo ${DRIVER_PREAMBLE}${DRIVER_AFFINITY} jmeter -n -t ${SCRIPT} -q $SCRIPT_DIR/user.properties -JTHREADS=$NUMCLIENTS -JDURATION=$DURATION -JRAMPUP=0 -JWARMUP=0 | tee results.$NUMCLIENTS
+    ${DRIVER_PREAMBLE}${DRIVER_AFFINITY} jmeter -n -t ${SCRIPT} -q $SCRIPT_DIR/user.properties -JTHREADS=$NUMCLIENTS -JDURATION=$DURATION -JRAMPUP=0 -JWARMUP=0 >> results.$NUMCLIENTS
     ;;
   wrk)
     # Number of connections must be >= threads
@@ -588,7 +590,7 @@ function startup() {
   let i=0
   for APP_PID in $APP_PIDS $CHILD_PIDS; do
     let i=$i+1
-    $WORK_DIR/monitorRSS.sh $APP_PID 1 > rssout${i}.txt &
+    $SCRIPT_DIR/monitorRSS.sh $APP_PID 1 > rssout${i}.txt &
     RSSMON_PIDS="$! $RSSMON_PIDS"
   done
   RSSMON_COUNT=$i

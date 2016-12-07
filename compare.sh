@@ -58,6 +58,19 @@ if [ -z "$SLEEP" ]; then
   SLEEP=5
 fi
 
+# Determine location of this script
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+# Check driver script is present
+if [ ! -e "$SCRIPT_DIR/drive.sh" ]; then
+  echo "Error: cannot find drive.sh in expected location: $SCRIPT_DIR"
+  exit 1
+fi
+if [ ! -x "$SCRIPT_DIR/drive.sh" ]; then
+  echo "Error: drive.sh script is not executable"
+  exit 1
+fi
+
 # Define a location to store the output (default: compares/<date>-<time>)
 if [ -z "$RUNNAME" ]; then
   RUNNAME=`date +'%Y%m%d-%H%M%S'`
@@ -95,7 +108,7 @@ for i in `seq 1 $ITERATIONS`; do
     if [ -z "$RECOMPARE" ]; then
       sleep $SLEEP  # Allow system time to settle
       # Usage: ./drive.sh <run name> <cpu list> <clients list> <duration> <app> <url> <instances>
-      ./drive.sh compare_$run $CPUS $CLIENTS $DURATION ${IMPLS[$j]} $URL ${INSTANCES[$j]} > $out 2>&1
+      $SCRIPT_DIR/drive.sh compare_$run $CPUS $CLIENTS $DURATION ${IMPLS[$j]} $URL ${INSTANCES[$j]} > $out 2>&1
     else
       echo ./drive.sh compare_$run $CPUS $CLIENTS $DURATION ${IMPLS[$j]} $URL ${INSTANCES[$j]}
     fi
