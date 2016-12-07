@@ -122,8 +122,9 @@ for i in `seq 1 $ITERATIONS`; do
     CPU[$runNo]=`grep 'Average CPU util' $out | awk '{print $4}'`
     MEM[$runNo]=`grep 'RSS (kb)' $out | sed -e's#.*end=\([0-9][0-9]*\).*#\1#' | awk '{total += $1} END {print total}'`
     LATAVG[$runNo]=`grep 'Latency  ' $out | awk '{print $2}' | awk '/[0-9\.]+s/ { print $1 * 1000 } /[0-9\.]+ms/ { print $1 / 1 } /[0-9\.]+us/ { print $1/1000 }'`
+    LAT99PCT[$runNo]=`grep '     99% ' $out | awk '{print $2}' | awk '/[0-9\.]+s/ { print $1 * 1000 } /[0-9\.]+ms/ { print $1 / 1 } /[0-9\.]+us/ { print $1/1000 }'`
     LATMAX[$runNo]=`grep 'Latency  ' $out | awk '{print $4}' | awk '/[0-9\.]+s/ { print $1 * 1000 } /[0-9\.]+ms/ { print $1 / 1 } /[0-9\.]+us/ { print $1/1000 }'`
-    echo "Throughput = ${THROUGHPUT[$runNo]} CPU = ${CPU[$runNo]} MEM = ${MEM[$runNo]}  Latency: avg = ${LATAVG[$runNo]}ms max = ${LATMAX[$runNo]}ms"
+    echo "Throughput = ${THROUGHPUT[$runNo]} CPU = ${CPU[$runNo]} MEM = ${MEM[$runNo]}  Latency: avg = ${LATAVG[$runNo]}ms  99% = ${LAT99PCT[$runNo]}ms  max = ${LATMAX[$runNo]}ms"
     # Archive the results from this run
     if [ -z "$RECOMPARE" ]; then
       mv runs/compare_$run $WORKDIR/runs/
@@ -132,14 +133,16 @@ for i in `seq 1 $ITERATIONS`; do
 done
 
 # Summarize
-echo 'Implementation | Avg Throughput | Max Throughput | Avg CPU | Avg RSS (kb) | Avg Lat (ms) | Max Lat (ms) '
-echo '---------------|----------------|----------------|---------|--------------|--------------|--------------'
+echo '               | Throughput (req/s)      | CPU (%) | Mem (kb)     | Latency (ms)                   '
+echo 'Implementation | Average    | Max        | Average | Avg peak RSS | Average  | 99%      | Max      '
+echo '---------------|------------|------------|---------|--------------|----------|----------|----------'
 for j in `seq 1 $IMPLC`; do
   TOT_TP=0
   TOT_CPU=0
   TOT_MEM=0
   MAX_TP=0
   TOT_LAT=0
+  MAX99_LAT=0
   MAX_LAT=0
   for i in `seq 1 $ITERATIONS`; do
     run="${i}_${j}"
@@ -151,13 +154,19 @@ for j in `seq 1 $IMPLC`; do
     if [ $(bc <<< "${THROUGHPUT[$runNo]} > $MAX_TP") = "1" ]; then
       MAX_TP=${THROUGHPUT[$runNo]}
     fi
+    if [ $(bc <<< "${LAT99PCT[$runNo]} > $MAX99_LAT") = "1" ]; then
+      MAX99_LAT=${LAT99PCT[$runNo]}
+    fi
     if [ $(bc <<< "${LATMAX[$runNo]} > $MAX_LAT") = "1" ]; then
       MAX_LAT=${LATMAX[$runNo]}
     fi
   done
   AVG_TP=$(bc <<< "scale=1; $TOT_TP / $ITERATIONS")
+  MAX_TP=$(bc <<< "scale=1; $MAX_TP / 1")
   AVG_CPU=$(bc <<< "scale=1; $TOT_CPU / $ITERATIONS")
   AVG_MEM=$(bc <<< "scale=0; $TOT_MEM / $ITERATIONS")
   AVG_LAT=$(bc <<< "scale=1; $TOT_LAT / $ITERATIONS")
-  awk -v a="$j" -v b="$AVG_TP" -v c="$MAX_TP" -v d="$AVG_CPU" -v e="$AVG_MEM" -v f="$AVG_LAT" -v g="$MAX_LAT" 'BEGIN {printf "%14s | %14s | %14s | %7s | %12s | %12s | %12s \n", a, b, c, d, e, f, g}'
+  MAX99_LAT=$(bc <<< "scale=1; $MAX99_LAT / 1")
+  MAX_LAT=$(bc <<< "scale=1; $MAX_LAT / 1")
+  awk -v a="$j" -v b="$AVG_TP" -v c="$MAX_TP" -v d="$AVG_CPU" -v e="$AVG_MEM" -v f="$AVG_LAT" -v g="$MAX99_LAT" -v h="$MAX_LAT" 'BEGIN {printf "%14s | %10s | %10s | %7s | %12s | %8s | %8s | %8s \n", a, b, c, d, e, f, g, h}'
 done
