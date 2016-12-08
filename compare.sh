@@ -209,3 +209,6 @@ fi
 
 # Output summary table
 cat $SUMMARY
+
+# Exit with non-zero RC if there were processing errors
+exit $ERRORS
