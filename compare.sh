@@ -41,7 +41,10 @@ else
   echo "Using URL: $URL"
 fi
 
-if [ ! -z "$CLIENT" ]; then
+if [ -z "$CLIENT" ]; then
+  CLIENT="localhost"
+  echo "Using default CLIENT: $CLIENT"
+else
   echo "Using CLIENT: $CLIENT"
 fi
 
@@ -81,7 +84,23 @@ if [ -z "$RUNNAME" ]; then
   RUNNAME="compares/`date +'%Y%m%d-%H%M%S'`"
 fi
 WORKDIR="$RUNNAME"
-echo "Results will be stored in $WORKDIR"
+mkdir -p $WORKDIR
+if [ $? -ne 0 ]; then
+  echo "Error: Unable to create $WORKDIR"
+  exit 1
+else
+  echo "Results will be stored in $WORKDIR"
+fi
+
+# Create a summary output file
+if [ -z "$RECOMPARE" ]; then
+  SUMMARY="$WORKDIR/results.txt"
+else
+  SUMMARY="$WORKDIR/results.txt.new"
+fi
+date > $SUMMARY
+echo "ITERATIONS: $ITERATIONS, DURATION: $DURATION, CLIENT: '$CLIENT', CLIENTS: $CLIENTS, URL: '$URL', CPUS: '$CPUS'" >> $SUMMARY
+echo "PWD: $PWD" >> $SUMMARY
 
 # Check requested applications all exist
 let IMPLC=0
@@ -89,14 +108,17 @@ for implstr in $*; do
   # Parse impl string into executable,instances
   impl=`echo $implstr | cut -d',' -f1`
   instances=`echo $implstr | cut -d',' -f2 -s`
-  if [ ! -e "$impl" -a -z "$RECOMPARE" ]; then
+  if [ -x "$PWD/$impl" ]; then
+    impl="$PWD/$impl"  # Convert to absolute path
+  fi
+  if [ ! -x "$impl" -a -z "$RECOMPARE" ]; then
     echo "Error: $impl is not executable"
     exit 1
   fi
   let IMPLC=$IMPLC+1
   IMPLS[$IMPLC]=$impl
   INSTANCES[$IMPLC]=$instances
-  echo "Implementation $IMPLC: ${IMPLS[$IMPLC]}"
+  echo "Implementation $IMPLC: ${IMPLS[$IMPLC]}" | tee -a $SUMMARY
 done
 
 # Create a directory to store run logs
@@ -133,9 +155,10 @@ for i in `seq 1 $ITERATIONS`; do
 done
 
 # Summarize
-echo '               | Throughput (req/s)      | CPU (%) | Mem (kb)     | Latency (ms)                   '
-echo 'Implementation | Average    | Max        | Average | Avg peak RSS | Average  | 99%      | Max      '
-echo '---------------|------------|------------|---------|--------------|----------|----------|----------'
+let ERRORS=0
+echo '               | Throughput (req/s)      | CPU (%) | Mem (kb)     | Latency (ms)                   ' >> $SUMMARY
+echo 'Implementation | Average    | Max        | Average | Avg peak RSS | Average  | 99%      | Max      ' >> $SUMMARY
+echo '---------------|------------|------------|---------|--------------|----------|----------|----------' >> $SUMMARY
 for j in `seq 1 $IMPLC`; do
   TOT_TP=0
   TOT_CPU=0
@@ -145,6 +168,12 @@ for j in `seq 1 $IMPLC`; do
   MAX99_LAT=0
   MAX_LAT=0
   for i in `seq 1 $ITERATIONS`; do
+    if [[ -z "${THROUGHPUT[$runNo]}" || -z "${CPU[$runNo]}" || -z "${MEM[$runNo]}" || -z "${LATAVG[$runNo]}"
+       || -z "${LAT99PCT[$runNo]}" || -z "${LATMAX[$runNo]}" ]]; then
+        echo "Error - unable to parse data for implementation $j iteration $i"
+        let ERRORS=$ERRORS+1
+        continue
+    fi
     run="${i}_${j}"
     let runNo=($i-1)*$IMPLC+$j
     TOT_TP=$(bc <<< "${THROUGHPUT[$runNo]} + $TOT_TP")
@@ -168,5 +197,15 @@ for j in `seq 1 $IMPLC`; do
   AVG_LAT=$(bc <<< "scale=1; $TOT_LAT / $ITERATIONS")
   MAX99_LAT=$(bc <<< "scale=1; $MAX99_LAT / 1")
   MAX_LAT=$(bc <<< "scale=1; $MAX_LAT / 1")
-  awk -v a="$j" -v b="$AVG_TP" -v c="$MAX_TP" -v d="$AVG_CPU" -v e="$AVG_MEM" -v f="$AVG_LAT" -v g="$MAX99_LAT" -v h="$MAX_LAT" 'BEGIN {printf "%14s | %10s | %10s | %7s | %12s | %8s | %8s | %8s \n", a, b, c, d, e, f, g, h}'
+  awk -v a="$j" -v b="$AVG_TP" -v c="$MAX_TP" -v d="$AVG_CPU" -v e="$AVG_MEM" -v f="$AVG_LAT" -v g="$MAX99_LAT" -v h="$MAX_LAT" 'BEGIN {printf "%14s | %10s | %10s | %7s | %12s | %8s | %8s | %8s \n", a, b, c, d, e, f, g, h}' >> $SUMMARY
 done
+
+echo "" >> $SUMMARY
+if [[ $ERRORS > 0 ]]; then
+  echo "*** Errors encountered during processing: $ERRORS" >> $SUMMARY
+else
+  echo "*** Completed successfully"
+fi
+
+# Output summary table
+cat $SUMMARY
