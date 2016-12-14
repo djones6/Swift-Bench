@@ -1,16 +1,37 @@
 diff --git a/drive.sh b/drive.sh
-index ed2a1d2..aa7b65d 100755
+index 47943af..c1f63fb 100755
 --- a/drive.sh
 +++ b/drive.sh
-@@ -427,8 +427,9 @@ function do_sample {
-   wrk)
+@@ -432,8 +432,9 @@ function do_sample {
+     fi
      # Number of connections must be >= threads
      [[ ${WORK_THREADS} -gt ${NUMCLIENTS} ]] && WORK_THREADS=${NUMCLIENTS}
--    echo ${DRIVER_PREAMBLE}${DRIVER_AFFINITY} wrk --timeout 30 --latency -t${WORK_THREADS} -c${NUMCLIENTS} -d${DURATION}s ${URL} | tee results.$NUMCLIENTS
--    ${DRIVER_PREAMBLE}${DRIVER_AFFINITY} wrk --timeout 30 --latency -t${WORK_THREADS} -c${NUMCLIENTS} -d${DURATION}s ${URL} 2>&1 | tee -a results.$NUMCLIENTS
+-    echo ${DRIVER_PREAMBLE}${DRIVER_AFFINITY} wrk --timeout 30 --latency -t${WORK_THREADS} -c${NUMCLIENTS} -d${DURATION}s ${URL} $WRK_SCRIPT | tee results.$NUMCLIENTS
+-    ${DRIVER_PREAMBLE}${DRIVER_AFFINITY} wrk --timeout 30 --latency -t${WORK_THREADS} -c${NUMCLIENTS} -d${DURATION}s ${URL} $WRK_SCRIPT 2>&1 | tee -a results.$NUMCLIENTS
 +    # Note, -i option is non-standard (see https://github.com/djones6/wrk/tree/interval)
-+    echo ${DRIVER_PREAMBLE}${DRIVER_AFFINITY} wrk -i5s --timeout 30 --latency -t${WORK_THREADS} -c${NUMCLIENTS} -d${DURATION}s ${URL} | tee results.$NUMCLIENTS
-+    ${DRIVER_PREAMBLE}${DRIVER_AFFINITY} wrk -i5s --timeout 30 --latency -t${WORK_THREADS} -c${NUMCLIENTS} -d${DURATION}s ${URL} 2>&1 | tee -a results.$NUMCLIENTS
++    echo ${DRIVER_PREAMBLE}${DRIVER_AFFINITY} wrk -i5s --timeout 30 --latency -t${WORK_THREADS} -c${NUMCLIENTS} -d${DURATION}s ${URL} $WRK_SCRIPT | tee results.$NUMCLIENTS
++    ${DRIVER_PREAMBLE}${DRIVER_AFFINITY} wrk -i5s --timeout 30 --latency -t${WORK_THREADS} -c${NUMCLIENTS} -d${DURATION}s ${URL} $WRK_SCRIPT 2>&1 | tee -a results.$NUMCLIENTS
      # For no keepalive you can do: -H "Connection: close"
      ;;
    wrk2)
+diff --git a/interval.patch b/interval.patch
+index b621d94..e69de29 100644
+--- a/interval.patch
++++ b/interval.patch
+@@ -1,16 +0,0 @@
+-diff --git a/drive.sh b/drive.sh
+-index ed2a1d2..aa7b65d 100755
+---- a/drive.sh
+-+++ b/drive.sh
+-@@ -427,8 +427,9 @@ function do_sample {
+-   wrk)
+-     # Number of connections must be >= threads
+-     [[ ${WORK_THREADS} -gt ${NUMCLIENTS} ]] && WORK_THREADS=${NUMCLIENTS}
+--    echo ${DRIVER_PREAMBLE}${DRIVER_AFFINITY} wrk --timeout 30 --latency -t${WORK_THREADS} -c${NUMCLIENTS} -d${DURATION}s ${URL} | tee results.$NUMCLIENTS
+--    ${DRIVER_PREAMBLE}${DRIVER_AFFINITY} wrk --timeout 30 --latency -t${WORK_THREADS} -c${NUMCLIENTS} -d${DURATION}s ${URL} 2>&1 | tee -a results.$NUMCLIENTS
+-+    # Note, -i option is non-standard (see https://github.com/djones6/wrk/tree/interval)
+-+    echo ${DRIVER_PREAMBLE}${DRIVER_AFFINITY} wrk -i5s --timeout 30 --latency -t${WORK_THREADS} -c${NUMCLIENTS} -d${DURATION}s ${URL} | tee results.$NUMCLIENTS
+-+    ${DRIVER_PREAMBLE}${DRIVER_AFFINITY} wrk -i5s --timeout 30 --latency -t${WORK_THREADS} -c${NUMCLIENTS} -d${DURATION}s ${URL} 2>&1 | tee -a results.$NUMCLIENTS
+-     # For no keepalive you can do: -H "Connection: close"
+-     ;;
+-   wrk2)
