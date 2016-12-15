@@ -156,9 +156,9 @@ done
 
 # Summarize
 let ERRORS=0
-echo '               | Throughput (req/s)      | CPU (%) | Mem (kb)     | Latency (ms)                   ' >> $SUMMARY
-echo 'Implementation | Average    | Max        | Average | Avg peak RSS | Average  | 99%      | Max      ' >> $SUMMARY
-echo '---------------|------------|------------|---------|--------------|----------|----------|----------' >> $SUMMARY
+echo '               | Throughput (req/s)      | CPU (%) | Mem (kb)     | Latency (ms)                   | good  ' >> $SUMMARY
+echo 'Implementation | Average    | Max        | Average | Avg peak RSS | Average  | 99%      | Max      | iters ' >> $SUMMARY
+echo '---------------|------------|------------|---------|--------------|----------|----------|----------|-------' >> $SUMMARY
 for j in `seq 1 $IMPLC`; do
   TOT_TP=0
   TOT_CPU=0
@@ -167,15 +167,19 @@ for j in `seq 1 $IMPLC`; do
   TOT_LAT=0
   MAX99_LAT=0
   MAX_LAT=0
+  let goodIterations=0
   for i in `seq 1 $ITERATIONS`; do
+    run="${i}_${j}"
+    let runNo=($i-1)*$IMPLC+$j
+    # Check that the current run was parsed successfully
     if [[ -z "${THROUGHPUT[$runNo]}" || -z "${CPU[$runNo]}" || -z "${MEM[$runNo]}" || -z "${LATAVG[$runNo]}"
        || -z "${LAT99PCT[$runNo]}" || -z "${LATMAX[$runNo]}" ]]; then
         echo "Error - unable to parse data for implementation $j iteration $i"
         let ERRORS=$ERRORS+1
         continue
     fi
-    run="${i}_${j}"
-    let runNo=($i-1)*$IMPLC+$j
+    # Continue processing - calculate summary statistics
+    let goodIterations=$goodIterations+1
     TOT_TP=$(bc <<< "${THROUGHPUT[$runNo]} + $TOT_TP")
     TOT_CPU=$(bc <<< "${CPU[$runNo]} + $TOT_CPU")
     TOT_MEM=$(bc <<< "${MEM[$runNo]} + $TOT_MEM")
@@ -190,14 +194,14 @@ for j in `seq 1 $IMPLC`; do
       MAX_LAT=${LATMAX[$runNo]}
     fi
   done
-  AVG_TP=$(bc <<< "scale=1; $TOT_TP / $ITERATIONS")
+  AVG_TP=$(bc <<< "scale=1; $TOT_TP / $goodIterations")
   MAX_TP=$(bc <<< "scale=1; $MAX_TP / 1")
-  AVG_CPU=$(bc <<< "scale=1; $TOT_CPU / $ITERATIONS")
-  AVG_MEM=$(bc <<< "scale=0; $TOT_MEM / $ITERATIONS")
-  AVG_LAT=$(bc <<< "scale=1; $TOT_LAT / $ITERATIONS")
+  AVG_CPU=$(bc <<< "scale=1; $TOT_CPU / $goodIterations")
+  AVG_MEM=$(bc <<< "scale=0; $TOT_MEM / $goodIterations")
+  AVG_LAT=$(bc <<< "scale=1; $TOT_LAT / $goodIterations")
   MAX99_LAT=$(bc <<< "scale=1; $MAX99_LAT / 1")
   MAX_LAT=$(bc <<< "scale=1; $MAX_LAT / 1")
-  awk -v a="$j" -v b="$AVG_TP" -v c="$MAX_TP" -v d="$AVG_CPU" -v e="$AVG_MEM" -v f="$AVG_LAT" -v g="$MAX99_LAT" -v h="$MAX_LAT" 'BEGIN {printf "%14s | %10s | %10s | %7s | %12s | %8s | %8s | %8s \n", a, b, c, d, e, f, g, h}' >> $SUMMARY
+  awk -v a="$j" -v b="$AVG_TP" -v c="$MAX_TP" -v d="$AVG_CPU" -v e="$AVG_MEM" -v f="$AVG_LAT" -v g="$MAX99_LAT" -v h="$MAX_LAT" -v i="$goodIterations" 'BEGIN {printf "%14s | %10s | %10s | %7s | %12s | %8s | %8s | %8s | %5s \n", a, b, c, d, e, f, g, h, i}' >> $SUMMARY
 done
 
 echo "" >> $SUMMARY
