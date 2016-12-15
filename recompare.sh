@@ -32,4 +32,4 @@ CLIENT=`grep 'Client machine:' $RUNNAME/compare_1_1.out | cut -d' ' -f3`
 export ITERATIONS URL CLIENT
 
 # Pass list of applications back to compare script in recompare mode
-grep 'Application:' $RUNNAME/compare_1_*.out | cut -d' ' -f2 -s | xargs env RECOMPARE=true $COMPARE
+ls -1 $RUNNAME/compare_1_*.out | sort -n -t_ -k3 | xargs grep 'Application:' | cut -d' ' -f2 -s | xargs env RECOMPARE=true $COMPARE
