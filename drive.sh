@@ -42,7 +42,7 @@ INSTANCES=$7
 
 # Select workload driver (client simulator) with DRIVER env variable
 # (default: wrk)
-DRIVER_CHOICES="wrk wrk-pipeline wrk2 jmeter"
+DRIVER_CHOICES="wrk wrk-pipeline wrk-nokeepalive wrk2 jmeter"
 #DRIVER="wrk"
 
 # Select profiler with PROFILER env variable
@@ -366,7 +366,7 @@ function summarize_driver_output {
         print "Min: " min " ms,  Max: " max " ms,  Avg: " avg " ms,  Thruput: " thruput " resp/sec"
       }'
     ;;
-  wrk | wrk-pipeline | wrk2)
+  wrk | wrk-pipeline | wrk-nokeepalive | wrk2)
     # Nothing to do
     ;;
   *)
@@ -424,17 +424,25 @@ function do_sample {
     echo ${DRIVER_PREAMBLE}${DRIVER_AFFINITY} jmeter -n -t ${SCRIPT} -q $SCRIPT_DIR/user.properties -JTHREADS=$NUMCLIENTS -JDURATION=$DURATION -JRAMPUP=0 -JWARMUP=0 | tee results.$NUMCLIENTS
     ${DRIVER_PREAMBLE}${DRIVER_AFFINITY} jmeter -n -t ${SCRIPT} -q $SCRIPT_DIR/user.properties -JTHREADS=$NUMCLIENTS -JDURATION=$DURATION -JRAMPUP=0 -JWARMUP=0 >> results.$NUMCLIENTS
     ;;
-  wrk | wrk-pipeline)
+  wrk | wrk-pipeline | wrk-nokeepalive)
     # If pipelining requested, use pipeline.lua
     # (see: https://github.com/TechEmpower/FrameworkBenchmarks)
     if [ $DRIVER = "wrk-pipeline" ]; then
       WRK_SCRIPT="--script $SCRIPT_DIR/pipeline.lua -- 16"
     fi
+    WRK_OPTS=()
+    if [ $DRIVER = "wrk-nokeepalive" ]; then
+      WRK_OPTS+=("-H" "Connection: close")
+    fi
+    # Use non-standard -i option if available, adds periodic throughput reporting
+    wrk | grep -q '\--interval'
+    if [ $? -eq 0 ]; then
+      WRK_OPTS+=("-i5s")
+    fi
     # Number of connections must be >= threads
     [[ ${WORK_THREADS} -gt ${NUMCLIENTS} ]] && WORK_THREADS=${NUMCLIENTS}
-    echo ${DRIVER_PREAMBLE}${DRIVER_AFFINITY} wrk --timeout 30 --latency -t${WORK_THREADS} -c${NUMCLIENTS} -d${DURATION}s ${URL} $WRK_SCRIPT | tee results.$NUMCLIENTS
-    ${DRIVER_PREAMBLE}${DRIVER_AFFINITY} wrk --timeout 30 --latency -t${WORK_THREADS} -c${NUMCLIENTS} -d${DURATION}s ${URL} $WRK_SCRIPT 2>&1 | tee -a results.$NUMCLIENTS
-    # For no keepalive you can do: -H "Connection: close"
+    echo ${DRIVER_PREAMBLE}${DRIVER_AFFINITY} wrk --timeout 30 --latency -t${WORK_THREADS} -c${NUMCLIENTS} -d${DURATION}s "${WRK_OPTS[@]}" ${URL} $WRK_SCRIPT | tee results.$NUMCLIENTS
+    ${DRIVER_PREAMBLE}${DRIVER_AFFINITY} wrk --timeout 30 --latency -t${WORK_THREADS} -c${NUMCLIENTS} -d${DURATION}s "${WRK_OPTS[@]}" ${URL} $WRK_SCRIPT 2>&1 | tee -a results.$NUMCLIENTS
     ;;
   wrk2)
     # Number of connections must be >= threads
@@ -570,12 +578,13 @@ function startup() {
 
   # Wait for servers to be ready (up to 10 seconds)
   # - use curl to detect when server is ready to respond
+  # - max wait time of 1 second in case server accepts connections but is unresponsive
   let MAX_WAIT_TIME=10
   let WAIT_SO_FAR=0
   while [ $WAIT_SO_FAR -lt $MAX_WAIT_TIME ]; do
     sleep 1
     let WAIT_SO_FAR=WAIT_SO_FAR+1
-    ${DRIVER_PREAMBLE} curl --head $URL >/dev/null 2>&1 && break || echo "Waiting for server - $WAIT_SO_FAR seconds"
+    ${DRIVER_PREAMBLE} curl -k -m 1 --head $URL >/dev/null 2>&1 && break || echo "Waiting for server - $WAIT_SO_FAR seconds"
   done
   echo "App pids=$APP_PIDS"
 
