@@ -780,6 +780,7 @@ fi
 teardown
 
 # Summarize RSS growth
+# If RSS_TRACE is set, also print a line of CSV for each process' RSS history
 echo "Resident set size (RSS) summary:" | tee mem.log
 for i in `seq 1 $RSSMON_COUNT`; do
   RSS_START=`head -n 1 rssout${i}.txt | awk '{print $1}'`
@@ -787,4 +788,8 @@ for i in `seq 1 $RSSMON_COUNT`; do
   RSS_HIGH_WATER_MARK=`awk -v max=0 '{if($1>max){max=$1}}END{print max}' rssout${i}.txt`
   let RSS_DIFF=$RSS_END-$RSS_START
   echo "$i: RSS (kb): start=$RSS_START end=$RSS_END delta=$RSS_DIFF max=$RSS_HIGH_WATER_MARK" | tee -a mem.log
+  if [ ! -z "$RSS_TRACE" ]; then
+    echo -n "RSS_TRACE[$i]: "
+    cat rssout${i}.txt | awk 'BEGIN {r=""} {r=r $1 ","} END {print r}'
+  fi
 done

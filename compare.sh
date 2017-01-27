@@ -147,6 +147,10 @@ for i in `seq 1 $ITERATIONS`; do
     LAT99PCT[$runNo]=`grep '     99% ' $out | awk '{print $2}' | awk '/[0-9\.]+s/ { print $1 * 1000 } /[0-9\.]+ms/ { print $1 / 1 } /[0-9\.]+us/ { print $1/1000 }'`
     LATMAX[$runNo]=`grep 'Latency  ' $out | awk '{print $4}' | awk '/[0-9\.]+s/ { print $1 * 1000 } /[0-9\.]+ms/ { print $1 / 1 } /[0-9\.]+us/ { print $1/1000 }'`
     echo "Throughput = ${THROUGHPUT[$runNo]} CPU = ${CPU[$runNo]} MEM = ${MEM[$runNo]}  Latency: avg = ${LATAVG[$runNo]}ms  99% = ${LAT99PCT[$runNo]}ms  max = ${LATMAX[$runNo]}ms"
+    # Also surface RSS trace data, if requested
+    if [ ! -z "$RSS_TRACE" ]; then
+      grep 'RSS_TRACE' $out
+    fi
     # Archive the results from this run
     if [ -z "$RECOMPARE" ]; then
       mv runs/compare_$run $WORKDIR/runs/
