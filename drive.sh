@@ -117,6 +117,9 @@ if [ -z "$1" -o "$1" == "--help" ]; then
   echo "  PROFILER to one of: $PROFILER_CHOICES"
   echo "  CLIENT to a hostname used to execute the load driver (must have $DRIVER installed)"
   echo "   - default is to execute on localhost"
+  echo "Output format options:"
+  echo "  INTERVAL - frequency of RSS measurements (seconds), and throughput (if supported)"
+  echo "  RSS_TRACE - if set, generates a CSV of periodic RSS measurements"
   echo ""
   exit 1
 fi
@@ -161,6 +164,14 @@ fi
 if [ -z "$CLIENT" ]; then
   CLIENT="localhost"
 fi
+# Interval (sec) for periodic measurements
+if [ -z "$INTERVAL" ]; then
+  INTERVAL=5
+fi
+# Ensure at least one sample generated for short runs
+if [ $DURATION -lt $INTERVAL ]; then
+  INTERVAL=$DURATION
+fi
 
 #
 # Gets fractional CPU time from the /proc filesystem (Linux only)
@@ -192,17 +203,11 @@ function monitor_cpu {
   CPULIST=$2
   DURATION=$3
  
-  # Ensure at least one report generated for short runs
-  CPU_SAMP_FREQ=2
-  if [ $DURATION -lt $CPU_SAMP_FREQ ]; then
-    CPU_SAMP_FREQ=$DURATION
-  fi
-
   case `uname` in
   Linux)
     # Start mpstat to monitor per-CPU utilization
     #
-    env LC_ALL='en_GB.UTF-8' mpstat -P $CPULIST $CPU_SAMP_FREQ > mpstat.$SUFFIX &
+    env LC_ALL='en_GB.UTF-8' mpstat -P $CPULIST $INTERVAL > mpstat.$SUFFIX &
     MPSTAT_PID=$!
     # Capture CPU cycles consumed by server before we apply load
     # (this avoids counting any CPU costs incurred during startup)
@@ -218,7 +223,7 @@ function monitor_cpu {
     # Monitor overall CPU utilization using top
     # Sleep briefly to make the first sample more representative.
     #
-    (sleep 1 ; exec top -F -R -o cpu -n 5 -ncols 10 -s $CPU_SAMP_FREQ > top.$SUFFIX) &
+    (sleep 1 ; exec top -F -R -o cpu -n 5 -ncols 10 -s $INTERVAL > top.$SUFFIX) &
     TOP_PID=$!
     # Capture CPU cycles consumed by server before we apply load
     for APP_PID in $APP_PIDS $CHILD_PIDS; do
@@ -437,7 +442,7 @@ function do_sample {
     # Use non-standard -i option if available, adds periodic throughput reporting
     wrk | grep -q '\--interval'
     if [ $? -eq 0 ]; then
-      WRK_OPTS+=("-i5s")
+      WRK_OPTS+=("-i${INTERVAL}s")
     fi
     # Number of connections must be >= threads
     [[ ${WORK_THREADS} -gt ${NUMCLIENTS} ]] && WORK_THREADS=${NUMCLIENTS}
@@ -604,7 +609,7 @@ function startup() {
   let i=0
   for APP_PID in $APP_PIDS $CHILD_PIDS; do
     let i=$i+1
-    $SCRIPT_DIR/monitorRSS.sh $APP_PID 1 > rssout${i}.txt &
+    $SCRIPT_DIR/monitorRSS.sh $APP_PID $INTERVAL > rssout${i}.txt &
     RSSMON_PIDS="$! $RSSMON_PIDS"
   done
   RSSMON_COUNT=$i
