@@ -70,3 +70,12 @@ summariser.interval=6
 summariser.log=true
 summariser.out=true
 
+# Set properties for the driver script - these can be overridden on the command line with -J
+# Note, the driver script can use the syntax ${__P(HOSTNAME, localhost)} in place of an absolute value
+# to specify a property, and the default value if the property is not specified.
+HOSTNAME=localhost
+PORT=8080
+USERS=128
+RAMPUP=0
+DURATION=30
+

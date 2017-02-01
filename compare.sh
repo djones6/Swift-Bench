@@ -181,8 +181,7 @@ for j in `seq 1 $IMPLC`; do
     run="${i}_${j}"
     let runNo=($i-1)*$IMPLC+$j
     # Check that the current run was parsed successfully
-    if [[ -z "${THROUGHPUT[$runNo]}" || -z "${CPU[$runNo]}" || -z "${MEM[$runNo]}" || -z "${LATAVG[$runNo]}"
-       || -z "${LAT99PCT[$runNo]}" || -z "${LATMAX[$runNo]}" ]]; then
+    if [[ -z "${THROUGHPUT[$runNo]}" || -z "${CPU[$runNo]}" || -z "${MEM[$runNo]}" || -z "${LATAVG[$runNo]}" || -z "${LATMAX[$runNo]}" ]]; then
         echo "Error - unable to parse data for implementation $j iteration $i"
         let ERRORS=$ERRORS+1
         continue

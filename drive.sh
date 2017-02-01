@@ -103,20 +103,25 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 # Consume cmdline args (simplest possible implementation for now)
 if [ -z "$1" -o "$1" == "--help" ]; then
-  echo "Usage: $0 <run name> <cpu list> <clients list> <duration> <app> <url> <instances> <rate list>"
+  echo "Usage: $0 <run name> <cpu list> <clients list> <duration> <app> <url> <instances>"
   echo " - eg: $0 my_run_4way 0,1,2,3 1,5,10,100,200 30 ~/kitura http://127.0.0.1:8080/hello 1"
   echo "  cpu list = comma-separated list of CPUs to affinitize to"
   echo "  client list = comma-separated list of # clients to drive load"
   echo "  duration = length of each load period (seconds)"
   echo "  app = app command to execute"
-  echo "  url = URL to drive load against (or jmeter script)"
+  echo "  url = URL to drive load against (also used to detect when server has started)"
   echo "  instances = number of copies of <app> to start"
-  echo "  rate list = comma-separated list of constant load levels (rps) to drive (only for wrk2)"
   echo "Optionally, set:"
   echo "  DRIVER to one of: $DRIVER_CHOICES"
   echo "  PROFILER to one of: $PROFILER_CHOICES"
   echo "  CLIENT to a hostname used to execute the load driver (must have $DRIVER installed)"
   echo "   - default is to execute on localhost"
+  echo "For JMeter:"
+  echo "  JMETER_SCRIPT - the .jmx file to use (required)"
+  echo "  USER_PROPS - the user.properties file (default: jmeter/user.properties.sample)"
+  echo "  SYSTEM_PROPS - the system.properties file (default: jmeter/system.properties.sample)"
+  echo "For wrk2:"
+  echo "  WORK_RATE = comma-separated list of constant load levels (rps) to drive"
   echo "Output format options:"
   echo "  INTERVAL - frequency of RSS measurements (seconds), and throughput (if supported)"
   echo "  RSS_TRACE - if set, generates a CSV of periodic RSS measurements"
@@ -153,25 +158,57 @@ if [ -z "$7" ]; then
   INSTANCES=1
   echo "INSTANCES not specified, using default of '$INSTANCES'"
 fi
-# Work rate (only used for wrk2 fixed-load generator)
-if [ "$DRIVER" = "wrk2" -a -z "$WORK_RATE" -a -z "$8" ]; then
-  WORK_RATE="1000,5000,10000"
-  echo "WORK_RATE not specified, using default of '$WORK_RATE'"
-elif [ -n "$8" ]; then
-  WORK_RATE=$8
-fi
+
 # Remote server for driving load (default: start locally)
 if [ -z "$CLIENT" ]; then
   CLIENT="localhost"
 fi
+
 # Interval (sec) for periodic measurements
 if [ -z "$INTERVAL" ]; then
   INTERVAL=5
 fi
-# Ensure at least one sample generated for short runs
 if [ $DURATION -lt $INTERVAL ]; then
+  # Ensure at least one sample generated for short runs
   INTERVAL=$DURATION
 fi
+
+#
+# Consume driver-specific options
+#
+case $DRIVER in
+wrk2)
+  # Work rate (only used for wrk2 fixed-load generator)
+  if [ -z "$WORK_RATE" ]; then
+    WORK_RATE="1000,5000,10000"
+    echo "WORK_RATE not specified, using default of '$WORK_RATE'"
+  fi
+  ;;
+jmeter)
+  if [ -z "$JMETER_SCRIPT" ]; then
+    echo "Error: must specify jmeter driver script (.jmx) with JMETER_SCRIPT"
+    exit 1
+  fi
+  if [ -z "$USER_PROPS" ]; then
+    USER_PROPS=${SCRIPT_DIR}/jmeter/user.properties.sample
+  fi
+  if [ -z "$SYSTEM_PROPS" ]; then
+    SYSTEM_PROPS=${SCRIPT_DIR}/jmeter/system.properties.sample
+  fi
+  if [ $INTERVAL -lt 6 ]; then
+    echo "Warning: Increasing measurement interval to minimum supported by JMeter (6 seconds)"
+    INTERVAL=6
+  fi
+  # Skip the first few samples from JMeter. The first sample is generally much shorter than expected,
+  # and the first 10 seconds or so will be tainted by the driver itself warming up.
+  JMETER_SKIP_SAMPLES=3
+  let MINIMUM_USEFUL_DURATION=($JMETER_SKIP_SAMPLES+1)*$INTERVAL
+  if [ $MINIMUM_USEFUL_DURATION -gt $DURATION ]; then
+    echo "Warning: Increasing duration to minimum useful duration ($MINIMUM_USEFUL_DURATION) as we will skip $JMETER_SKIP_SAMPLES jmeter samples"
+    DURATION=$MINIMUM_USEFUL_DURATION
+  fi
+  ;;
+esac
 
 #
 # Gets fractional CPU time from the /proc filesystem (Linux only)
@@ -346,29 +383,51 @@ function summarize_driver_output {
   # Post-process driver output
   case $DRIVER in
   jmeter)
-    # Cherry-pick useful information from JMeter summary
-    SUMMARY=`grep 'summary +' results.$SUFFIX | tail -n 4 | head -n 3`
-    echo "Summary from final 3 intervals of JMeter output:"
-    echo $SUMMARY | awk '
+    # Cherry-pick useful information from JMeter summary. Expected format:
+    #
+    # summary +    997 in     6s =  165.6/s Avg:    59 Min:     2 Max:   215 Err:     0 (0.00%) Active: 10 Started: 10 Finished: 0
+    #
+    grep 'summary +' results.$SUFFIX | awk -v SKIP=${JMETER_SKIP_SAMPLES} '
+      function sort(ARRAY, COUNT) {
+        for (i = 2; i <= COUNT; ++i) {
+          for (j = i; ARRAY[j-1] > ARRAY[j]; --j) {
+            temp = ARRAY[j];
+            ARRAY[j] = ARRAY[j-1];
+            ARRAY[j-1] = temp;
+          }
+        }
+        return 
+      }
       BEGIN {
-        min=0;
-        max=0;
-        avg=0;
-        thruput=0;
-        count=0
+        min = 0; max = 0; count = 0; csv = "";
       }
       /summary \+ / {
-        min=(min < $11 ? min : $11);
-        max=(max > $13 ? max : $13);
-        avg += $9;
-        sub("/s", "", $7);
-        thruput += $7;
-        count ++
+        count ++;
+        if (count > SKIP) {
+          min = (min < $11 ? min : $11);
+          max = (max > $13 ? max : $13);
+          avgs[count-SKIP] = $9;
+          sub("/s", "", $7);
+          values[count-SKIP] = 0 + $7;
+        }
       }
       END { 
-        avg=avg/count;
-        thruput=thruput/count;
-        print "Min: " min " ms,  Max: " max " ms,  Avg: " avg " ms,  Thruput: " thruput " resp/sec"
+        count -= SKIP;      # we skipped first N samples (warmup)
+        count -= 1;         # skip the final sample (short sample, threads completing)
+        for (i=1; i<=count; i++) { 
+          tot_avg += avgs[i];               # Calculate average response time
+          tot_thruput += values[i];         # Calculate average throughput
+          csv = csv values[i] ",";
+        }
+        avg_rt = tot_avg/count;
+        avg_tp = tot_thruput/count;
+        sort(values, count);
+        median_tp = values[int(count/2)];
+        max_tp = values[count];
+        print "Summary of last " count " samples (first " SKIP " and last 1 skipped):"
+        print "Latency       " avg_rt "ms (avg)   " max "ms (max)";
+        print "Requests/sec: " median_tp " (median), " avg_tp " (avg), " max_tp " (max)";
+        print "THROUGHPUT_TRACE: " csv
       }'
     ;;
   wrk | wrk-pipeline | wrk-nokeepalive | wrk2)
@@ -425,9 +484,8 @@ function do_sample {
   # Execute driver
   case $DRIVER in
   jmeter)
-    SCRIPT=$URL  # Until I think of something better
-    echo ${DRIVER_PREAMBLE}${DRIVER_AFFINITY} jmeter -n -t ${SCRIPT} -q $SCRIPT_DIR/user.properties -JTHREADS=$NUMCLIENTS -JDURATION=$DURATION -JRAMPUP=0 -JWARMUP=0 | tee results.$NUMCLIENTS
-    ${DRIVER_PREAMBLE}${DRIVER_AFFINITY} jmeter -n -t ${SCRIPT} -q $SCRIPT_DIR/user.properties -JTHREADS=$NUMCLIENTS -JDURATION=$DURATION -JRAMPUP=0 -JWARMUP=0 >> results.$NUMCLIENTS
+    echo ${DRIVER_PREAMBLE}${DRIVER_AFFINITY} jmeter -n -t ${JMETER_SCRIPT} -S ${SYSTEM_PROPS} -q ${USER_PROPS} -JTHREADS=$NUMCLIENTS -JDURATION=$DURATION -Jsummariser.interval=${INTERVAL} | tee results.$NUMCLIENTS
+    ${DRIVER_PREAMBLE}${DRIVER_AFFINITY} jmeter -n -t ${JMETER_SCRIPT} -S ${SYSTEM_PROPS} -q ${USER_PROPS} -JTHREADS=$NUMCLIENTS -JDURATION=$DURATION -Jsummariser.interval=${INTERVAL} >> results.$NUMCLIENTS
     ;;
   wrk | wrk-pipeline | wrk-nokeepalive)
     # If pipelining requested, use pipeline.lua

@@ -11,7 +11,7 @@ On Linux, you may additionally want to install:
 - `numactl` if not already installed (`sudo apt-get install numactl)`
 
 ##Usage:
-`./drive.sh run_name [cpu list] [clients list] [duration] [app] [url] [instances] [rate list]`
+`./drive.sh run_name [cpu list] [clients list] [duration] [app] [url] [instances]`
 - cpu list = comma-separated list of CPUs to affinitize the application to (eg: 0,1,2,3)
   - only supported on Linux. This param is ignored on Mac
 - clients list = number of simultaneous clients to simulate. This can be a comma-separated list, for example to simulate ramp-up. Separate statistics will be reported for each load period
@@ -19,9 +19,28 @@ On Linux, you may additionally want to install:
 - app = full path name to the executable under test
 - url = URL to drive load against (or for JMeter, the driver script to use)
 - instances = number of concurrent instances of app to start (default 1)
-- rate list = comma-separated list of constant load levels (rps) to drive (only for wrk2)
 
 Results and output files are stored under a subdirectory `runs/<run name>/`
+
+###Environment variables:
+
+The following options further influence how the script behaves:
+
+- `CLIENT` - remote client server (see 'Driving requests remotely' below)
+- `DRIVER` - the load driver to use (see 'Workload driver' below)
+- `PROFILER` - the profiling tool to run (see 'Profiling' below)
+
+Workload driver options - for JMeter:
+- `JMETER_SCRIPT` - the `.jmx` file to use (required)
+- `USER_PROPS` - the user.properties file (default: `jmeter/user.properties.sample`)
+- `SYSTEM_PROPS` - the system.properties file (default: `jmeter/system.properties.sample`)
+
+Workload driver options - for wrk2:
+- `WORK_RATE` = comma-separated list of constant load levels (rps) to drive
+
+Output format options:
+- `INTERVAL` - frequency of RSS measurements (seconds), and throughput (if supported)
+- `RSS_TRACE` - if set, generates a CSV of periodic RSS measurements
 
 ###Customizing the drive.sh script
 
@@ -44,6 +63,8 @@ Before using this script, there are a number of hard-coded settings that you sho
   CLIENTS: # of concurrent clients (default: 128)
   DURATION: time (sec) to apply load (default: 30)
 ```
+...in addition, the environment variables consumed by `drive.sh` can also be specified.
+
 If you require multiple instances of the application, specify the application path and number of instances separated by a comma, for example: `/path/to/executable,iterations`
 
 ##Example output
@@ -61,9 +82,9 @@ This is a simple summarization of the output from each run of each implementatio
 ###Regenerating the output from a previous compare
 
 As a convenience, to regenerate the output from a previous compare, use:
-`./recompare.sh <date>` where `<date>` is one of the subdirectories under `compares`.
+`./recompare.sh <date>` where `<date>` is a directory containing the original output (eg. `compares/<date>`).
 
-Recompare will automatically determine which applications you compared. However, if you set any environment variables for your original compare (such as changing the number of iterations), you must set them to the same values when running recompare.
+Recompare will automatically determine which applications you compared. However, if you set any environment variables for your original compare (such as changing the number of iterations), you must set them to the same values when running recompare.  This is useful if you want to fix or workaround a problem with one of the original post-processing scripts.
 
 ##Workload driver
 
@@ -73,6 +94,10 @@ You can set the environment variable `DRIVER` to either
 - jmeter (http://jmeter.apache.org/) - highly customizable Java-based load generator
 
 By default, 'wrk' is used to drive load.  Ensure that the command is available in your PATH.
+
+Also, a couple of 'wrk' variants:
+- wrk-nokeepalive - sets the `Connection: close` header when talking to the server
+- wrk-pipeline - enables HTTP pipelining of requests
 
 ###Driving requests remotely
 
