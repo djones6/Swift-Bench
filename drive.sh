@@ -367,6 +367,15 @@ function end_monitor_cpu {
     CPU_IDLE_AVG=`echo $CPU_IDLE_SAMPLES | sed -e's/% /+/g' -e's/%//' | bc | awk -v SAMPLES=$NUM_SAMPLES '{printf "%.1f",$1/SAMPLES}'`
     CPU_TOTAL_AVG=`echo "100 - $CPU_IDLE_AVG" | bc`
     echo "Average CPU util: $CPU_TOTAL_AVG % (${CPU_USER_AVG} % user, ${CPU_SYS_AVG} % sys, ${CPU_IDLE_AVG} % idle)"
+    # If CPU_TRACE is set, display periodic CPU utilization (csv format)
+    if [ ! -z "$CPU_TRACE" ]; then
+      CPU_USER_CSV=`echo $CPU_USER_SAMPLES | sed -e's/% /,/g' -e's/%//'`
+      CPU_SYS_CSV=`echo $CPU_SYS_SAMPLES | sed -e's/% /,/g' -e's/%//'`
+      CPU_TOTAL_CSV=`grep 'CPU usage:' top.$SUFFIX | awk '{print $7}' | sed -e's/%//g' | awk '{printf("%s,", 100-$1)}'`
+      echo "CPU_USER_TRACE: $CPU_USER_CSV"
+      echo "CPU_SYS_TRACE: $CPU_SYS_CSV"
+      echo "CPU_TOTAL_TRACE: $CPU_TOTAL_CSV"
+    fi
     ;;
   esac
 }
