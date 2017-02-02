@@ -710,7 +710,14 @@ function shutdown() {
     ;;
   esac
   # Wait for process(es) to end
-  wait $APP_PIDS
+  for APP_PID in $APP_PIDS; do
+    wait $APP_PID
+    APP_RC=$?
+    # Expect RC=143 (128 + 15 = SIGTERM)
+    if [ $APP_RC -ne 143 ]; then
+      echo "Detected unexpected termination: RC of $APP_PID = $APP_RC"
+    fi
+  done
 }
 
 #
