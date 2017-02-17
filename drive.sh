@@ -648,16 +648,21 @@ function startup() {
     APP_PIDS="$! $APP_PIDS"
   done
 
-  # Wait for servers to be ready (up to 10 seconds)
+  # Wait for servers to be ready (up to 30 seconds)
+  # This allows server start scripts to perform pre-start actions (such as cleanup or database reset)
   # - use curl to detect when server is ready to respond
   # - max wait time of 1 second in case server accepts connections but is unresponsive
-  let MAX_WAIT_TIME=10
+  let MAX_WAIT_TIME=30
   let WAIT_SO_FAR=0
-  while [ $WAIT_SO_FAR -lt $MAX_WAIT_TIME ]; do
-    sleep 1
-    let WAIT_SO_FAR=WAIT_SO_FAR+1
+  let CHECK_INTERVAL=2
+  while [ ! $WAIT_SO_FAR -gt $MAX_WAIT_TIME ]; do
+    sleep $CHECK_INTERVAL
+    let WAIT_SO_FAR=WAIT_SO_FAR+CHECK_INTERVAL
     ${DRIVER_PREAMBLE} curl -k -m 1 --head $URL >/dev/null 2>&1 && break || echo "Waiting for server - $WAIT_SO_FAR seconds"
   done
+  if [ $WAIT_SO_FAR -gt $MAX_WAIT_TIME ]; then
+    echo "App failed to start after $MAX_WAIT_TIME seconds"
+  fi
   echo "App pids=$APP_PIDS"
 
   # Identify any child processes (eg. when using Node.js cluster)
