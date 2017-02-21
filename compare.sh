@@ -156,6 +156,10 @@ for i in `seq 1 $ITERATIONS`; do
     if [ ! -z "$RSS_TRACE" ]; then
       grep 'RSS_TRACE' $out
     fi
+    # Also surface CPU time stats, if requested
+    if [ ! -z "$CPU_STATS" ]; then
+      grep 'CPU time delta' $out
+    fi
     # Archive the results from this run
     if [ -z "$RECOMPARE" ]; then
       mv runs/compare_$run $WORKDIR/runs/
