@@ -42,7 +42,7 @@ INSTANCES=$7
 
 # Select workload driver (client simulator) with DRIVER env variable
 # (default: wrk)
-DRIVER_CHOICES="wrk wrk-pipeline wrk-nokeepalive wrk2 jmeter"
+DRIVER_CHOICES="wrk wrk-pipeline wrk-nokeepalive wrk2 jmeter sleep"
 #DRIVER="wrk"
 
 # Select profiler with PROFILER env variable
@@ -435,12 +435,20 @@ function summarize_driver_output {
         max_tp = values[count];
         print "Summary of last " count " samples (first " SKIP " and last 1 skipped):"
         print "Latency       " avg_rt "ms (avg)   " max "ms (max)";
+        print "     99%      0ms  (data not available)"
         print "Requests/sec: " median_tp " (median), " avg_tp " (avg), " max_tp " (max)";
         print "THROUGHPUT_TRACE: " csv
       }'
     ;;
   wrk | wrk-pipeline | wrk-nokeepalive | wrk2)
     # Nothing to do
+    ;;
+  sleep)
+    # Generate some placeholder statistics for 'compare.sh' to consume
+    echo "No requests were driven against the server."
+    echo "Latency       0ms (avg)    0ms (max)"
+    echo "     99%      0ms"
+    echo "Requests/sec: 0"
     ;;
   *)
     ;;
@@ -524,6 +532,11 @@ function do_sample {
     echo ${DRIVER_PREAMBLE}${DRIVER_AFFINITY} wrk2 --timeout 30 --latency -R ${RATE} -t${WORK_THREADS} -c${NUMCLIENTS} -d${WRK2_DURATION}s ${URL} | tee results.$NUMCLIENTS
     ${DRIVER_PREAMBLE}${DRIVER_AFFINITY} wrk2 --timeout 30 --latency -R ${RATE} -t${WORK_THREADS} -c${NUMCLIENTS} -d${WRK2_DURATION}s ${URL} 2>&1 | tee -a results.$NUMCLIENTS
     # For no keepalive you can do: -H "Connection: close"
+    ;;
+  sleep)
+    # Drive no requests
+    echo "Driving no requests (sleep $DURATION)"
+    sleep $DURATION
     ;;
   *)
     echo "Unknown driver '$DRIVER'"
