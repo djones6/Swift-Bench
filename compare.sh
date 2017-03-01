@@ -162,12 +162,10 @@ json_object_end
 mkdir -p $WORKDIR/runs
 
 # Execute tests
-json_object_start "Iterations"
 for i in `seq 1 $ITERATIONS`; do
-  json_object_start "$i"
-  json_object_start "Implementations"
+  json_object_start "Iteration $i"
   for j in `seq 1 $IMPLC`; do
-    json_object_start "$j"
+    json_object_start "Implementation $j"
     echo "Iteration $i: Implementation $j"
     run="${i}_${j}"
     let runNo=($i-1)*$IMPLC+$j
@@ -237,10 +235,8 @@ for i in `seq 1 $ITERATIONS`; do
     fi
     json_object_end  # end implementation
   done
-  json_object_end    # end implementations
   json_object_end    # end iteration
 done
-json_object_end      # end iterations
 
 # Summarize
 # TODO: add JSON summary
