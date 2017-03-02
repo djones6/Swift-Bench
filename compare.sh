@@ -29,6 +29,7 @@ if [ -z "$1" ]; then
   echo "Usage: ./compare.sh <impl1> ... <implN>"
   echo "Please specify fully qualified path to the application."
   echo "Optionally, set following environment variables:"
+  echo "  DRIVER: workload driver (default: wrk)"
   echo "  ITERATIONS: number of repetitions of each implementation (default: 5)"
   echo "  URL: url to drive load against (default: http://127.0.0.1:8080/plaintext)"
   echo "  CLIENT: server to use to execute load driver (default: localhost)"
@@ -37,6 +38,14 @@ if [ -z "$1" ]; then
   echo "  DURATION: time (sec) to apply load (default: 30)"
   echo "  SLEEP: time (sec) to wait between tests (default: 5)"
   echo "  RUNNAME: name of directory to store results (default: compares/DDDDMMYY-HHmmss)"
+  echo "Output control:"
+  echo "  RSS_TRACE: set to enable production of periodic RSS values in CSV format"
+  echo "  CPU_TRACE: set to enable periodic CPU values in CSV format"
+  echo "  THROUGHPUT_TRACE: set to enable periodic throughput values in CSV format"
+  echo "  CPU_STATS: set to report total/user/sys CPU time consumed by application"
+  echo "Instance control:"
+  echo "  To run multiple instances of the application, add a comma and a number to the"
+  echo "  filename, eg: /my/app,4 to run 4 instances of /my/app"
   exit 1
 fi
 
@@ -201,7 +210,8 @@ for i in `seq 1 $ITERATIONS`; do
     json_number "Avg Latency" ${LATAVG[$runNo]}
     json_number "99% Latency" ${LAT99PCT[$runNo]}
     json_number "Max Latency" ${LATMAX[$runNo]}
-    # Also surface throughput trace data, if requested
+    json_object_start "CSV"
+    # Surface throughput trace data, if requested
     if [ ! -z "$THROUGHPUT_TRACE" ]; then
       echo -n "THROUGHPUT_TRACE: "
       case "$DRIVER" in
@@ -217,18 +227,36 @@ for i in `seq 1 $ITERATIONS`; do
       echo $TRACE
       json_string "Throughput CSV" "$TRACE"
     fi
-    # Also surface RSS trace data, if requested
+    # Surface RSS trace data, if requested
     if [ ! -z "$RSS_TRACE" ]; then
-      TRACE=`grep 'RSS_TRACE' $out | sed -e's#RSS_TRACE:##'`
+      TRACE=`grep 'RSS_TRACE' $out | sed -e's#RSS_TRACE.*:##'`
       echo "RSS_TRACE: $TRACE"
       json_string "RSS CSV" "$TRACE"
     fi
-    # Also surface CPU time stats, if requested
+    # Surface CPU trace data, if requested
+    if [ ! -z "$CPU_TRACE" ]; then
+      TRACE=`grep 'CPU_USER_TRACE' $out | sed -e's#CPU_USER_TRACE:##'`
+      echo "CPU_USER_TRACE: $TRACE"
+      json_string "CPU User CSV" "$TRACE"
+      TRACE=`grep 'CPU_SYS_TRACE' $out | sed -e's#CPU_SYS_TRACE:##'`
+      echo "CPU_SYS_TRACE: $TRACE"
+      json_string "CPU Sys CSV" "$TRACE"
+      TRACE=`grep 'CPU_TOTAL_TRACE' $out | sed -e's#CPU_TOTAL_TRACE:##'`
+      echo "CPU_TOTAL_TRACE: $TRACE"
+      json_string "CPU Total CSV" "$TRACE"
+    fi
+    # Surface CPU time stats, if requested
     if [ ! -z "$CPU_STATS" ]; then
       TRACE=`grep 'CPU time delta' $out`
+      CPU_USR=`echo $TRACE | sed -e's#.*user=\([0-9\.]*\) .*#\1#'`
+      CPU_SYS=`echo $TRACE | sed -e's#.*sys=\([0-9\.]*\) .*#\1#'`
+      CPU_TOT=`echo $TRACE | sed -e's#.*total=\([0-9\.]*\) .*#\1#'`
       echo $TRACE
-      # TODO: put it in JSON...
+      json_number "Process CPUTime User" $CPU_USR
+      json_number "Process CPUTime Sys" $CPU_SYS
+      json_number "Process CPUTime Total" $CPU_TOT
     fi
+    json_object_end  # end CSV
     # Archive the results from this run
     if [ -z "$RECOMPARE" ]; then
       mv runs/compare_$run $WORKDIR/runs/

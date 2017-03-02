@@ -140,6 +140,7 @@ if [ -z "$1" -o "$1" == "--help" ]; then
   echo "Output format options:"
   echo "  INTERVAL - frequency of RSS measurements (seconds), and throughput (if supported)"
   echo "  RSS_TRACE - if set, generates a CSV of periodic RSS measurements"
+  echo "  CPU_TRACE - if set, generates a CSV of periodic CPU measurements"
   echo ""
   exit 1
 fi
