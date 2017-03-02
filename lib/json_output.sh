@@ -15,6 +15,11 @@
 # limitations under the License.
 #
 
+# Determine location of this script
+JSON_SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+. ${JSON_SCRIPT_DIR}/sanitize.sh
+
 let JSON_ENABLED=0
 let JSON_INDENT=0
 let JSON_COMMA=0
@@ -73,9 +78,13 @@ function json_end {
 #
 function json_string {
   if [ $JSON_ENABLED -eq 0 ]; then return; fi
+  sanitize_string "$1"
+  JSON_KEY="$SANITIZED_STRING"
+  sanitize_string "$2"
+  JSON_VAL="$SANITIZED_STRING"
   json_comma
   json_indent
-  printf "\"%s\": \"%s\"" "$1" "$2" >> $JSON_OUTPUT
+  printf "\"%s\": \"%s\"" "$JSON_KEY" "$JSON_VAL" >> $JSON_OUTPUT
 }
 
 #
@@ -86,9 +95,13 @@ function json_string {
 #
 function json_number {
   if [ $JSON_ENABLED -eq 0 ]; then return; fi
+  sanitize_string "$1"
+  JSON_KEY="$SANITIZED_STRING"
+  sanitize_string "$2"
+  JSON_VAL="$SANITIZED_STRING"
   json_comma
   json_indent
-  printf "\"%s\": %s" "$1" "$2" >> $JSON_OUTPUT
+  printf "\"%s\": %s" "$JSON_KEY" "$JSON_VAL" >> $JSON_OUTPUT
 }
 
 #
@@ -98,9 +111,11 @@ function json_number {
 #
 function json_object_start {
   if [ $JSON_ENABLED -eq 0 ]; then return; fi
+  sanitize_string "$1"
+  JSON_KEY="$SANITIZED_STRING"
   json_comma
   json_indent
-  printf "\"%s\": {\n" "$1" >> $JSON_OUTPUT
+  printf "\"%s\": {\n" "$JSON_KEY" >> $JSON_OUTPUT
   let JSON_COMMA=0
   let JSON_INDENT=$JSON_INDENT+1
 }
