@@ -43,6 +43,7 @@ if [ -z "$1" ]; then
   echo "  CPU_TRACE: set to enable periodic CPU values in CSV format"
   echo "  THROUGHPUT_TRACE: set to enable periodic throughput values in CSV format"
   echo "  CPU_STATS: set to report total/user/sys CPU time consumed by application"
+  echo "  JSONFILE: fully-qualified filename to write results to in JSON format"
   echo "Instance control:"
   echo "  To run multiple instances of the application, add a comma and a number to the"
   echo "  filename, eg: /my/app,4 to run 4 instances of /my/app"
