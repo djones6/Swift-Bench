@@ -194,7 +194,7 @@ for i in `seq 1 $ITERATIONS`; do
     # Note, removal of carriage return chars (^M) required when client output comes from 'ssh -t'
     THROUGHPUT[$runNo]=`grep 'Requests/sec' $out | awk '{gsub("\\r", ""); print $2}'`
     CPU[$runNo]=`grep 'Average CPU util' $out | awk '{print $4}'`
-    MEM[$runNo]=`grep 'RSS (kb)' $out | sed -e's#.*end=\([0-9][0-9]*\).*#\1#' | awk '{total += $1} END {print total}'`
+    MEM[$runNo]=`grep 'RSS (kb)' $out | sed -e's#.*max=\([0-9][0-9]*\).*#\1#' | awk '{total += $1} END {print total}'`
     LATAVG[$runNo]=`grep 'Latency  ' $out | awk '{print $2}' | awk '/[0-9\.]+s/ { print $1 * 1000 } /[0-9\.]+ms/ { print $1 / 1 } /[0-9\.]+us/ { print $1/1000 }'`
     case "$DRIVER" in
       wrk2) LAT99PCT[$runNo]=`grep ' 99.000% ' $out | awk '{print $2}' | awk '/[0-9\.]+s/ { print $1 * 1000 } /[0-9\.]+ms/ { print $1 / 1 } /[0-9\.]+us/ { print $1/1000 }'`
@@ -207,7 +207,7 @@ for i in `seq 1 $ITERATIONS`; do
     echo "Throughput = ${THROUGHPUT[$runNo]} CPU = ${CPU[$runNo]} MEM = ${MEM[$runNo]}  Latency: avg = ${LATAVG[$runNo]}ms  99% = ${LAT99PCT[$runNo]}ms  max = ${LATMAX[$runNo]}ms"
     json_number "Avg Throughput" ${THROUGHPUT[$runNo]}
     json_number "Avg CPU" ${CPU[$runNo]}
-    json_number "Max RSS" ${MEM[$runNo]}
+    json_number "Peak RSS" ${MEM[$runNo]}
     json_number "Avg Latency" ${LATAVG[$runNo]}
     json_number "99% Latency" ${LAT99PCT[$runNo]}
     json_number "Max Latency" ${LATMAX[$runNo]}
@@ -228,12 +228,6 @@ for i in `seq 1 $ITERATIONS`; do
       echo $TRACE
       json_string "Throughput CSV" "$TRACE"
     fi
-    # Surface RSS trace data, if requested
-    if [ ! -z "$RSS_TRACE" ]; then
-      TRACE=`grep 'RSS_TRACE' $out | sed -e's#RSS_TRACE.*:##'`
-      echo "RSS_TRACE: $TRACE"
-      json_string "RSS CSV" "$TRACE"
-    fi
     # Surface CPU trace data, if requested
     if [ ! -z "$CPU_TRACE" ]; then
       TRACE=`grep 'CPU_USER_TRACE' $out | sed -e's#CPU_USER_TRACE:##'`
@@ -246,18 +240,37 @@ for i in `seq 1 $ITERATIONS`; do
       echo "CPU_TOTAL_TRACE: $TRACE"
       json_string "CPU Total CSV" "$TRACE"
     fi
-    # Surface CPU time stats, if requested
+    # Surface CPU time stats, if requested (sum of instances)
     if [ ! -z "$CPU_STATS" ]; then
-      TRACE=`grep 'CPU time delta' $out`
-      CPU_USR=`echo $TRACE | sed -e's#.*user=\([0-9\.]*\) .*#\1#'`
-      CPU_SYS=`echo $TRACE | sed -e's#.*sys=\([0-9\.]*\) .*#\1#'`
-      CPU_TOT=`echo $TRACE | sed -e's#.*total=\([0-9\.]*\) .*#\1#'`
-      echo $TRACE
+      let NUM_INSTANCES=`grep "CPU time delta" $out | wc -l`
+      CPU_USR=0
+      CPU_SYS=0
+      CPU_TOT=0
+      for instNum in `seq 1 ${NUM_INSTANCES}`; do
+        TRACE=`grep "${instNum}: CPU time delta" $out`
+        val=`echo $TRACE | sed -e's#.*user=\([0-9\.]*\) .*#\1#'`
+        CPU_USR=$(bc <<< "$val + $CPU_USR")
+        val=`echo $TRACE | sed -e's#.*sys=\([0-9\.]*\) .*#\1#'`
+        CPU_SYS=$(bc <<< "$val + $CPU_SYS")
+        val=`echo $TRACE | sed -e's#.*total=\([0-9\.]*\).*#\1#'`
+        CPU_TOT=$(bc <<< "$val + $CPU_TOT")
+      done
+      echo "Total: user=$CPU_USR sys=$CPU_SYS total=$CPU_TOT"
       json_number "Process CPUTime User" $CPU_USR
       json_number "Process CPUTime Sys" $CPU_SYS
       json_number "Process CPUTime Total" $CPU_TOT
     fi
+    # Surface RSS trace data, if requested (sum of instances)
+    if [ ! -z "$RSS_TRACE" ]; then
+# TODO - sum multiple instances
+      TRACE=`grep 'RSS_TRACE' $out | sed -e's#.*RSS_TRACE: ##'`
+      echo "RSS_TRACE: $TRACE"
+      json_string "RSS CSV" "$TRACE"
+    fi
     json_object_end  # end CSV
+    # Record number of server processes that were summarized
+    NUM_PROCESSES=`grep 'Total server processes' $out | sed -e's#Total server processes: ##'`
+    json_number "Process Count" $NUM_PROCESSES
     # Archive the results from this run
     if [ -z "$RECOMPARE" ]; then
       mv runs/compare_$run $WORKDIR/runs/
@@ -268,7 +281,7 @@ for i in `seq 1 $ITERATIONS`; do
 done
 
 # Summarize
-# TODO: add JSON summary
+json_object_start "Summary"
 let ERRORS=0
 echo '               | Throughput (req/s)      | CPU (%) | Mem (kb)     | Latency (ms)                   | good  ' >> $SUMMARY
 echo 'Implementation | Average    | Max        | Average | Avg peak RSS | Average  | 99%      | Max      | iters ' >> $SUMMARY
@@ -315,7 +328,18 @@ for j in `seq 1 $IMPLC`; do
   MAX99_LAT=$(bc <<< "scale=1; $MAX99_LAT / 1")
   MAX_LAT=$(bc <<< "scale=1; $MAX_LAT / 1")
   awk -v a="$j" -v b="$AVG_TP" -v c="$MAX_TP" -v d="$AVG_CPU" -v e="$AVG_MEM" -v f="$AVG_LAT" -v g="$MAX99_LAT" -v h="$MAX_LAT" -v i="$goodIterations" 'BEGIN {printf "%14s | %10s | %10s | %7s | %12s | %8s | %8s | %8s | %5s \n", a, b, c, d, e, f, g, h, i}' >> $SUMMARY
+  json_object_start "Implementation $j"
+  json_number "Avg Throughput" $AVG_TP
+  json_number "Max Throughput" $MAX_TP
+  json_number "Avg CPU" $AVG_CPU
+  json_number "Avg Peak RSS" $AVG_MEM
+  json_number "Avg Latency" $AVG_LAT
+  json_number "99% Latency" $MAX99_LAT
+  json_number "Max Latency" $MAX_LAT
+  json_number "Good iterations" $goodIterations
+  json_object_end  # End implementation
 done
+json_object_end    # End summary
 
 json_end
 

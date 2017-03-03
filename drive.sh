@@ -714,6 +714,8 @@ function startup() {
     RSSMON_PIDS="$! $RSSMON_PIDS"
   done
   RSSMON_COUNT=$i
+  # Report how many processes are executing as a result of starting the server
+  echo "Total server processes: $i"
 }
 
 #
@@ -902,7 +904,7 @@ for i in `seq 1 $RSSMON_COUNT`; do
   let RSS_DIFF=$RSS_END-$RSS_START
   echo "$i: RSS (kb): start=$RSS_START end=$RSS_END delta=$RSS_DIFF max=$RSS_HIGH_WATER_MARK" | tee -a mem.log
   if [ ! -z "$RSS_TRACE" ]; then
-    echo -n "RSS_TRACE[$i]: "
+    echo -n "$i: RSS_TRACE: "
     cat rssout${i}.txt | awk 'BEGIN {r=""} {r=r $1 ","} END {print r}'
   fi
 done
