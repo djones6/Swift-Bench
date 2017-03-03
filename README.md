@@ -41,6 +41,7 @@ Workload driver options - for wrk2:
 Output format options:
 - `INTERVAL` - frequency of RSS measurements (seconds), and throughput (if supported)
 - `RSS_TRACE` - if set, generates a CSV of periodic RSS measurements
+- `CPU_TRACE` - if set, generates a CSV of periodic CPU measurements
 
 ###Customizing the drive.sh script
 
@@ -57,15 +58,25 @@ Before using this script, there are a number of hard-coded settings that you sho
 - The original output from `drive.sh` is preserved in a series of files named `compares/<date>/compare_<iteration no>_<app no>.out`.
 - Compares can be customized by setting various environment variables:
 ```
+  DRIVER: workload driver to use (default: wrk)
   ITERATIONS: number of repetitions of each implementation (default: 5)
   URL: url to drive load against (default: http://127.0.0.1:8080/plaintext)
+  CLIENT: server to use to execute load driver (default: localhost)
   CPUS: list of CPUs to affinitize to (default: 0,1,2,3)
   CLIENTS: # of concurrent clients (default: 128)
   DURATION: time (sec) to apply load (default: 30)
+  SLEEP: time (sec) to wait between tests (default: 5)
+  RUNNAME: name of directory to store results (default: compares/YYYYMMDD-HHmmss)
+Output control:
+  RSS_TRACE: set to enable production of periodic RSS values in CSV format
+  CPU_TRACE: set to enable periodic CPU values in CSV format
+  THROUGHPUT_TRACE: set to enable periodic throughput values in CSV format
+  CPU_STATS: set to report total/user/sys CPU time consumed by application
+  JSONFILE: fully-qualified filename to write results to in JSON format
 ```
 ...in addition, the environment variables consumed by `drive.sh` can also be specified.
 
-If you require multiple instances of the application, specify the application path and number of instances separated by a comma, for example: `/path/to/executable,iterations`
+If you require multiple instances of the application, specify the application path and number of instances separated by a comma, for example: `/my/app,4` to run 4 instances of /my/app
 
 ##Example output
 
@@ -78,6 +89,8 @@ Implementation | Avg Throughput | Max Throughput | Avg CPU | Avg RSS (kb)
              3 |         3196.4 |        3196.90 |    10.1 |        42287
  ```
 This is a simple summarization of the output from each run of each implementation. Further details for each measurement can be found by examining the `compare_<iteration no>_<app no>.out` files.
+
+If `JSONFILE` is specified, the JSON-formatted output will be written to this file in addition to the normal output described above.
 
 ###Regenerating the output from a previous compare
 
@@ -92,6 +105,7 @@ You can set the environment variable `DRIVER` to either
 - wrk (https://github.com/wg/wrk) - highly efficient, variable-rate load generator
 - wrk2 (https://github.com/giltene/wrk2) - fixed-rate wrk variant with accurate latency stats
 - jmeter (http://jmeter.apache.org/) - highly customizable Java-based load generator
+- sleep - drive no load (allows for monitoring of idle resource consumption)
 
 By default, 'wrk' is used to drive load.  Ensure that the command is available in your PATH.
 
