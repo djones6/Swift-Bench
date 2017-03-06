@@ -20,9 +20,9 @@ JSON_SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 . ${JSON_SCRIPT_DIR}/sanitize.sh
 
-let JSON_ENABLED=0
-let JSON_INDENT=0
-let JSON_COMMA=0
+JSON_ENABLED=0
+JSON_INDENT=0
+JSON_COMMA=0
 JSON_OUTPUT=""
 
 #
@@ -31,9 +31,9 @@ JSON_OUTPUT=""
 #
 function json_set_file {
   JSON_OUTPUT="$1"
-  let JSON_ENABLED=1
-  let JSON_INDENT=0
-  let JSON_COMMA=0
+  JSON_ENABLED=1
+  JSON_INDENT=0
+  JSON_COMMA=0
 }
 
 #
@@ -41,7 +41,7 @@ function json_set_file {
 #
 function json_stop {
   JSON_OUTPUT=""
-  let JSON_ENABLED=0
+  JSON_ENABLED=0
 }
 
 #
@@ -52,7 +52,7 @@ function json_start {
   if [ $JSON_ENABLED -eq 0 ]; then return; fi
   json_indent
   printf "{\n" > $JSON_OUTPUT
-  let JSON_INDENT=$JSON_INDENT+1
+  JSON_INDENT=$((JSON_INDENT+1))
 }
 
 #
@@ -62,7 +62,7 @@ function json_start {
 function json_end {
   if [ $JSON_ENABLED -eq 0 ]; then return; fi
   while [ $JSON_INDENT -gt 0 ]; do
-    let JSON_INDENT=$JSON_INDENT-1
+    JSON_INDENT=$((JSON_INDENT-1))
     printf "\n" >> $JSON_OUTPUT
     json_indent
     printf "}" >> $JSON_OUTPUT
@@ -78,10 +78,8 @@ function json_end {
 #
 function json_string {
   if [ $JSON_ENABLED -eq 0 ]; then return; fi
-  sanitize_string "$1"
-  JSON_KEY="$SANITIZED_STRING"
-  sanitize_string "$2"
-  JSON_VAL="$SANITIZED_STRING"
+  JSON_KEY=`sanitize_string "$1"`
+  JSON_VAL=`sanitize_string "$2"`
   json_comma
   json_indent
   printf "\"%s\": \"%s\"" "$JSON_KEY" "$JSON_VAL" >> $JSON_OUTPUT
@@ -95,10 +93,8 @@ function json_string {
 #
 function json_number {
   if [ $JSON_ENABLED -eq 0 ]; then return; fi
-  sanitize_string "$1"
-  JSON_KEY="$SANITIZED_STRING"
-  sanitize_string "$2"
-  JSON_VAL="$SANITIZED_STRING"
+  JSON_KEY=`sanitize_string "$1"`
+  JSON_VAL=`sanitize_string "$2"`
   json_comma
   json_indent
   printf "\"%s\": %s" "$JSON_KEY" "$JSON_VAL" >> $JSON_OUTPUT
@@ -111,13 +107,12 @@ function json_number {
 #
 function json_object_start {
   if [ $JSON_ENABLED -eq 0 ]; then return; fi
-  sanitize_string "$1"
-  JSON_KEY="$SANITIZED_STRING"
+  JSON_KEY=`sanitize_string "$1"`
   json_comma
   json_indent
   printf "\"%s\": {\n" "$JSON_KEY" >> $JSON_OUTPUT
-  let JSON_COMMA=0
-  let JSON_INDENT=$JSON_INDENT+1
+  JSON_COMMA=0
+  JSON_INDENT=$((JSON_INDENT+1))
 }
 
 #
@@ -126,11 +121,11 @@ function json_object_start {
 #
 function json_object_end {
   if [ $JSON_ENABLED -eq 0 ]; then return; fi
-  let JSON_INDENT=$JSON_INDENT-1
+  JSON_INDENT=$((JSON_INDENT-1))
   printf "\n" >> $JSON_OUTPUT
   json_indent
   printf "}" >> $JSON_OUTPUT
-  let JSON_COMMA=1
+  JSON_COMMA=1
 }
 
 #
@@ -138,9 +133,9 @@ function json_object_end {
 #
 function json_indent {
   if [ $JSON_ENABLED -eq 0 ]; then return; fi
-  let COUNTER=0
+  COUNTER=0
   while [ $COUNTER -lt $JSON_INDENT ]; do
-    let COUNTER=$COUNTER+1
+    COUNTER=$((COUNTER+1))
     printf "    " >> $JSON_OUTPUT
   done
 }
@@ -153,7 +148,7 @@ function json_comma {
   if [ $JSON_COMMA -gt 0 ]; then
     printf ",\n" >> $JSON_OUTPUT
   fi
-  let JSON_COMMA=1
+  JSON_COMMA=1
 }
 
 #
@@ -173,4 +168,3 @@ function json_env {
   IFS="$TMPIFS"
   json_object_end
 }
-
