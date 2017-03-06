@@ -333,10 +333,9 @@ function end_monitor_cpu {
     done
     echo "Average CPU util: `echo $LIST_CPUS | awk -v n=$NUM_CPUS -v t=$TOTAL_CPU '{printf "%.1f",t/n}'` %"
     if [ ! -z "$CPU_TRACE" ]; then
-      CPU_USER_CHECK=`grep -e"..:..:.." mpstat.$SUFFIX  | awk 'NR > 1 {subtotal+=$3, print $3}  NR > 1 && NR % $NUM_CPUS == 1 { printf subtotal, "%.1f%", subtotal/$NUM_CPUS; subtotal=0}'`
-      CPU_USER_CSV=`grep -e"..:..:.." mpstat.$SUFFIX  | awk 'NR > 1 {subtotal+=$3}  NR > 1 && NR % $NUM_CPUS == 1 { printf "%.1f%", subtotal/$NUM_CPUS; subtotal=0}' | sed -e's/%/,/g' -e's/%//'`
-      CPU_SYS_CSV=`grep -e"..:..:.." mpstat.$SUFFIX  | awk 'NR > 1 {subtotal+=$5}  NR > 1 && NR % $NUM_CPUS == 1 { printf "%.1f%", subtotal/$NUM_CPUS; subtotal=0}' | sed -e's/%/,/g' -e's/%//'`
-      CPU_TOTAL_CSV=`grep -e"..:..:.." mpstat.$SUFFIX  | awk 'NR > 1 {subtotal+=(100-$12)}  NR > 1 && NR % $NUM_CPUS == 1 { printf "%.1f%", subtotal/$NUM_CPUS; subtotal=0}' | sed -e's/%/,/g' -e's/%//'`
+      CPU_USER_CSV=`grep -e"..:..:.." mpstat.$SUFFIX  | awk -v NUM_CPUS=$NUM_CPUS 'NR > 1 {subtotal_usr+=$3}  NR > 1 && NR % NUM_CPUS == 1 { printf "%.1f%", subtotal_usr/NUM_CPUS; subtotal_usr=0}' | sed -e's/%/,/g' -e's/,$//'`
+      CPU_SYS_CSV=`grep -e"..:..:.." mpstat.$SUFFIX  | awk -v NUM_CPUS=$NUM_CPUS 'NR > 1 {subtotal_sys+=$5}  NR > 1 && NR % NUM_CPUS == 1 { printf "%.1f%", subtotal_sys/NUM_CPUS; subtotal_sys=0}' | sed -e's/%/,/g' -e's/,$//'`
+      CPU_TOTAL_CSV=`grep -e"..:..:.." mpstat.$SUFFIX  | awk -v NUM_CPUS=$NUM_CPUS 'NR > 1 {subtotal_t+=(100-$12)}  NR > 1 && NR % NUM_CPUS == 1 { printf "%.1f%", subtotal_t/NUM_CPUS; subtotal_t=0}' | sed -e's/%/,/g' -e's/,$//'`
       echo "CPU_USER_TRACE: $CPU_USER_CSV"
       echo "CPU_SYS_TRACE: $CPU_SYS_CSV"
       echo "CPU_TOTAL_TRACE: $CPU_TOTAL_CSV"
