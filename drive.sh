@@ -757,9 +757,11 @@ function shutdown() {
   for APP_PID in $APP_PIDS; do
     wait $APP_PID
     APP_RC=$?
-    # Expect RC=143 (128 + 15 = SIGTERM)
+  # Expect RC=143 (128 + 15 = SIGTERM)
     if [ $APP_RC -ne 143 ]; then
       echo "Detected unexpected termination: RC of $APP_PID = $APP_RC"
+    else 
+      echo "Detected successful termination of $APP_PID"
     fi
   done
 }
