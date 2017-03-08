@@ -256,11 +256,11 @@ for i in `seq 1 $ITERATIONS`; do
       CPU_TOT=0
       for instNum in `seq 1 ${NUM_INSTANCES}`; do
         TRACE=`grep "${instNum}: CPU time delta" $out`
-        val=`echo $TRACE | sed -e's#.*user=\([0-9\.]*\) .*#\1#'`
+        val=`echo $TRACE | sed -e's#.*user=\([0-9\.\-]*\) .*#\1#'`
         CPU_USR=$(bc <<< "$val + $CPU_USR")
-        val=`echo $TRACE | sed -e's#.*sys=\([0-9\.]*\) .*#\1#'`
+        val=`echo $TRACE | sed -e's#.*sys=\([0-9\.\-]*\) .*#\1#'`
         CPU_SYS=$(bc <<< "$val + $CPU_SYS")
-        val=`echo $TRACE | sed -e's#.*total=\([0-9\.]*\).*#\1#'`
+        val=`echo $TRACE | sed -e's#.*total=\([0-9\.\-]*\).*#\1#'`
         CPU_TOT=$(bc <<< "$val + $CPU_TOT")
       done
       echo "Total: user=$CPU_USR sys=$CPU_SYS total=$CPU_TOT"
