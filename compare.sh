@@ -191,12 +191,18 @@ for i in `seq 1 $ITERATIONS`; do
     fi
     json_string "Command" "./drive.sh compare_$run $CPUS $CLIENTS $DURATION ${IMPLS[$j]} $URL ${INSTANCES[$j]}"
 
-  # Don't parse output if iteration did not terminate successfully
+    # Archive the results from this run
+    if [ -z "$RECOMPARE" ]; then
+      mv runs/compare_$run $WORKDIR/runs/
+    fi
+
+    # Don't parse output if iteration did not terminate successfully
     if grep 'Detected successful termination' $out; then
         json_string "Good iteration" "true"
     else
         echo "Ignoring iteration as did not terminate successfully"
         json_string "Good iteration" "false"
+        json_object_end  # end implementation
         continue
     fi
     # Note, removal of carriage return chars (^M) required when client output comes from 'ssh -t'
@@ -279,10 +285,6 @@ for i in `seq 1 $ITERATIONS`; do
     # Record number of server processes that were summarized
     NUM_PROCESSES=`grep 'Total server processes' $out | sed -e's#Total server processes: ##'`
     json_number "Process Count" $NUM_PROCESSES
-    # Archive the results from this run
-    if [ -z "$RECOMPARE" ]; then
-      mv runs/compare_$run $WORKDIR/runs/
-    fi
     json_object_end  # end implementation
   done
   json_object_end    # end iteration
