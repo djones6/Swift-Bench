@@ -263,7 +263,7 @@ for i in `seq 1 $ITERATIONS`; do
         val=`echo $TRACE | sed -e's#.*total=\([0-9\.\-]*\).*#\1#'`
         CPU_TOT=$(bc <<< "$val + $CPU_TOT")
       done
-      echo "Total: user=$CPU_USR sys=$CPU_SYS total=$CPU_TOT"
+      echo "Total CPU time consumed by $NUM_INSTANCES server processes: user=$CPU_USR sys=$CPU_SYS total=$CPU_TOT"
       json_number "Process CPUTime User" $CPU_USR
       json_number "Process CPUTime Sys" $CPU_SYS
       json_number "Process CPUTime Total" $CPU_TOT
