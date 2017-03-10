@@ -905,9 +905,12 @@ echo "Resident set size (RSS) summary:" | tee mem.log
 for i in `seq 1 $RSSMON_COUNT`; do
   RSS_START=`head -n 1 rssout${i}.txt | awk '{print $1}'`
   RSS_END=`tail -n 1 rssout${i}.txt | awk '{print $1}'`
+  printf "RSS_TRACE_${i}: " | tee -a trace.csv
+  file=rssout${i}.txt
+  awk '{printf $1","}END{printf "\n"}' $file | tee -a trace.csv
   RSS_HIGH_WATER_MARK=`awk -v max=0 '{if($1>max){max=$1}}END{print max}' rssout${i}.txt`
   let RSS_DIFF=$RSS_END-$RSS_START
   echo "$i: RSS (kb): start=$RSS_START end=$RSS_END delta=$RSS_DIFF max=$RSS_HIGH_WATER_MARK" | tee -a mem.log
 done
-printf "RSS_TRACE: " | tee -a trace.csv
-awk -v RSS_TRACE=$RSS_TRACE '{a[FNR]+=$1;}END{for(i=1;i<=FNR;i++) printf a[i]","}' rssout* | tee -a trace.csv
+printf "RSS_TRACE_TOTAL: " | tee -a trace.csv
+awk -v RSS_TRACE=$RSS_TRACE '{a[FNR]+=$1}END{for(i=1;i<=FNR;i++) printf a[i]","}' rssout* | tee -a trace.csv

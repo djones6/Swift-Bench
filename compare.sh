@@ -275,11 +275,11 @@ for i in `seq 1 $ITERATIONS`; do
       echo "CPU_TOTAL_TRACE: $TOTAL_TRACE"
     fi
     # Surface RSS trace data into json file, only print if requested
-    TRACE=`grep 'RSS_TRACE' $trace | sed -e's#.*RSS_TRACE: ##'`
+    TRACE=`grep 'RSS_TRACE_TOTAL' $trace | sed -e's#.*RSS_TRACE_TOTAL: ##'`
     if [ ! -z "$VERBOSE_TRACE" ]; then
     echo "RSS_TRACE: $TRACE"
     fi
-    json_string "RSS CSV" "$TRACE"
+    json_string "TOTAL RSS CSV" "$TRACE"
 
     json_object_end  # end CSV
     json_object_end  # end implementation
