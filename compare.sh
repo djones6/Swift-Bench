@@ -39,10 +39,7 @@ if [ -z "$1" ]; then
   echo "  SLEEP: time (sec) to wait between tests (default: 5)"
   echo "  RUNNAME: name of directory to store results (default: compares/DDDDMMYY-HHmmss)"
   echo "Output control:"
-  echo "  RSS_TRACE: set to enable production of periodic RSS values in CSV format"
-  echo "  CPU_TRACE: set to enable periodic CPU values in CSV format"
-  echo "  THROUGHPUT_TRACE: set to enable periodic throughput values in CSV format"
-  echo "  CPU_STATS: set to report total/user/sys CPU time consumed by application"
+  echo "  VERBOSE_TRACE: set to enable printing of RSS, CPU and throughtput trace values"
   echo "  JSONFILE: fully-qualified filename to write results to in JSON format"
   echo "Instance control:"
   echo "  To run multiple instances of the application, add a comma and a number to the"
@@ -191,12 +188,18 @@ for i in `seq 1 $ITERATIONS`; do
     fi
     json_string "Command" "./drive.sh compare_$run $CPUS $CLIENTS $DURATION ${IMPLS[$j]} $URL ${INSTANCES[$j]}"
 
+    # Archive the results from this run
+    if [ -z "$RECOMPARE" ]; then
+      mv runs/compare_$run $WORKDIR/runs/
+    fi
+
   # Don't parse output if iteration did not terminate successfully
-    if grep 'Detected successful termination' $out; then
+    if grep -q 'Detected successful termination' $out; then
         json_string "Good iteration" "true"
     else
         echo "Ignoring iteration as did not terminate successfully"
         json_string "Good iteration" "false"
+        json_object_end  # end implementation
         continue
     fi
     # Note, removal of carriage return chars (^M) required when client output comes from 'ssh -t'
@@ -219,70 +222,66 @@ for i in `seq 1 $ITERATIONS`; do
     json_number "Avg Latency" ${LATAVG[$runNo]}
     json_number "99% Latency" ${LAT99PCT[$runNo]}
     json_number "Max Latency" ${LATMAX[$runNo]}
-    json_object_start "CSV"
-    # Surface throughput trace data, if requested
-    if [ ! -z "$THROUGHPUT_TRACE" ]; then
-      echo -n "THROUGHPUT_TRACE: "
-      case "$DRIVER" in
-        wrk2|sleep)
-          TRACE="Unavailable"
-          ;;
-        jmeter)
-          TRACE=`grep 'THROUGHPUT_TRACE:' $out | sed -e's#THROUGHPUT_TRACE:##'`
-          ;;
-        *)
-          TRACE=`cat $out | awk 'BEGIN {r=""} /requests in last/ {r=r $8 ","} END {print r}'`
-      esac
-      echo $TRACE
-      json_string "Throughput CSV" "$TRACE"
-    fi
-    # Surface CPU trace data, if requested
-    if [ ! -z "$CPU_TRACE" ]; then
-      TRACE=`grep 'CPU_USER_TRACE' $out | sed -e's#CPU_USER_TRACE:##'`
-      echo "CPU_USER_TRACE: $TRACE"
-      json_string "CPU User CSV" "$TRACE"
-      TRACE=`grep 'CPU_SYS_TRACE' $out | sed -e's#CPU_SYS_TRACE:##'`
-      echo "CPU_SYS_TRACE: $TRACE"
-      json_string "CPU Sys CSV" "$TRACE"
-      TRACE=`grep 'CPU_TOTAL_TRACE' $out | sed -e's#CPU_TOTAL_TRACE:##'`
-      echo "CPU_TOTAL_TRACE: $TRACE"
-      json_string "CPU Total CSV" "$TRACE"
-    fi
-    # Surface CPU time stats, if requested (sum of instances)
-    if [ ! -z "$CPU_STATS" ]; then
-      let NUM_INSTANCES=`grep "CPU time delta" $out | wc -l`
-      CPU_USR=0
-      CPU_SYS=0
-      CPU_TOT=0
-      for instNum in `seq 1 ${NUM_INSTANCES}`; do
-        TRACE=`grep "${instNum}: CPU time delta" $out`
-        val=`echo $TRACE | sed -e's#.*user=\([0-9\.]*\) .*#\1#'`
-        CPU_USR=$(bc <<< "$val + $CPU_USR")
-        val=`echo $TRACE | sed -e's#.*sys=\([0-9\.]*\) .*#\1#'`
-        CPU_SYS=$(bc <<< "$val + $CPU_SYS")
-        val=`echo $TRACE | sed -e's#.*total=\([0-9\.]*\).*#\1#'`
-        CPU_TOT=$(bc <<< "$val + $CPU_TOT")
-      done
-      echo "Total: user=$CPU_USR sys=$CPU_SYS total=$CPU_TOT"
-      json_number "Process CPUTime User" $CPU_USR
-      json_number "Process CPUTime Sys" $CPU_SYS
-      json_number "Process CPUTime Total" $CPU_TOT
-    fi
-    # Surface RSS trace data, if requested (sum of instances)
-    if [ ! -z "$RSS_TRACE" ]; then
-# TODO - sum multiple instances
-      TRACE=`grep 'RSS_TRACE' $out | sed -e's#.*RSS_TRACE: ##'`
-      echo "RSS_TRACE: $TRACE"
-      json_string "RSS CSV" "$TRACE"
-    fi
-    json_object_end  # end CSV
+    # Surface CPU time stats (sum of instances) in json file, only print if requested
     # Record number of server processes that were summarized
     NUM_PROCESSES=`grep 'Total server processes' $out | sed -e's#Total server processes: ##'`
     json_number "Process Count" $NUM_PROCESSES
-    # Archive the results from this run
-    if [ -z "$RECOMPARE" ]; then
-      mv runs/compare_$run $WORKDIR/runs/
+    CPU_USR=0
+    CPU_SYS=0
+    CPU_TOT=0
+    for instNum in `seq 1 ${NUM_PROCESSES}`; do
+      TRACE=`grep "${instNum}: CPU time delta" $out`
+      val=`echo $TRACE | sed -e's#.*user=\([0-9\.\-]*\) .*#\1#'`
+      CPU_USR=$(bc <<< "$val + $CPU_USR")
+      val=`echo $TRACE | sed -e's#.*sys=\([0-9\.\-]*\) .*#\1#'`
+      CPU_SYS=$(bc <<< "$val + $CPU_SYS")
+      val=`echo $TRACE | sed -e's#.*total=\([0-9\.\-]*\).*#\1#'`
+      CPU_TOT=$(bc <<< "$val + $CPU_TOT")
+    done
+    if [ ! -z "$VERBOSE_TRACE" ]; then
+      echo "Total CPU time consumed by $NUM_PROCESSES server processes: user=$CPU_USR sys=$CPU_SYS total=$CPU_TOT"
     fi
+    json_number "Process CPUTime User" $CPU_USR
+    json_number "Process CPUTime Sys" $CPU_SYS
+    json_number "Process CPUTime Total" $CPU_TOT
+    trace="$WORKDIR/runs/compare_$run/trace.csv"
+    json_object_start "CSV"
+    #Surface throughput trace data into json file, only print if specified
+    case "$DRIVER" in
+      wrk2|sleep)
+        TRACE="Unavailable"
+        ;;
+      jmeter)
+        TRACE=`grep 'THROUGHPUT_TRACE:' $trace | sed -e's#THROUGHPUT_TRACE:##'`
+        ;;
+      *)
+        TRACE=`cat $out | awk 'BEGIN {r=""} /requests in last/ {r=r $8 ","} END {print r}'`
+    esac
+    printf "\nTHROUGHPUT_TRACE: $TRACE" >> $trace
+    json_string "Throughput CSV" "$TRACE"
+    if [ ! -z "$VERBOSE_TRACE" ]; then
+    echo "THROUGHPUT_TRACE: $TRACE"
+    fi
+    # Surface CPU trace data into json file, only print if requested
+    USR_TRACE=`grep 'CPU_USER_TRACE' $trace | sed -e's#CPU_USER_TRACE:##'`
+    json_string "CPU User CSV" "$USR_TRACE"
+    SYS_TRACE=`grep 'CPU_SYS_TRACE' $trace | sed -e's#CPU_SYS_TRACE:##'`
+    json_string "CPU Sys CSV" "$SYS_TRACE"
+    TOTAL_TRACE=`grep 'CPU_TOTAL_TRACE' $trace | sed -e's#CPU_TOTAL_TRACE:##'`
+    json_string "CPU Total CSV" "$TOTAL_TRACE"
+    if [ ! -z "$VERBOSE_TRACE" ]; then
+      echo "CPU_USER_TRACE: $USR_TRACE"
+      echo "CPU_SYS_TRACE: $SYS_TRACE"
+      echo "CPU_TOTAL_TRACE: $TOTAL_TRACE"
+    fi
+    # Surface RSS trace data into json file, only print if requested
+    TRACE=`grep 'RSS_TRACE' $trace | sed -e's#.*RSS_TRACE: ##'`
+    if [ ! -z "$VERBOSE_TRACE" ]; then
+    echo "RSS_TRACE: $TRACE"
+    fi
+    json_string "RSS CSV" "$TRACE"
+
+    json_object_end  # end CSV
     json_object_end  # end implementation
   done
   json_object_end    # end iteration
