@@ -457,7 +457,8 @@ function summarize_driver_output {
         print "     99%      0ms  (data not available)"
         print "Requests/sec: " median_tp " (median), " avg_tp " (avg), " max_tp " (max)";
         print "THROUGHPUT_TRACE: " csv >> trace.csv
-      }'
+      }' | tee -a jmeterSummary.$SUFFIX
+    grep "THROUGHPUT_TRACE:" jmeterSummary.$SUFFIX | tee -a trace.csv
     ;;
   wrk | wrk-pipeline | wrk-nokeepalive | wrk2)
     # Nothing to do
