@@ -139,8 +139,6 @@ if [ -z "$1" -o "$1" == "--help" ]; then
   echo "  WORK_RATE = comma-separated list of constant load levels (rps) to drive"
   echo "Output format options:"
   echo "  INTERVAL - frequency of RSS measurements (seconds), and throughput (if supported)"
-  echo "  RSS_TRACE - if set, generates a CSV of periodic RSS measurements"
-  echo "  CPU_TRACE - if set, generates a CSV of periodic CPU measurements"
   echo ""
   exit 1
 fi
@@ -332,14 +330,12 @@ function end_monitor_cpu {
       let NUM_CPUS=$NUM_CPUS+1
     done
     echo "Average CPU util: `echo $LIST_CPUS | awk -v n=$NUM_CPUS -v t=$TOTAL_CPU '{printf "%.1f",t/n}'` %"
-    if [ ! -z "$CPU_TRACE" ]; then
-      CPU_USER_CSV=`grep -e"..:..:.." mpstat.$SUFFIX  | awk -v NUM_CPUS=$NUM_CPUS 'NR > 1 {subtotal_usr+=$3}  NR > 1 && NR % NUM_CPUS == 1 { printf "%.1f%", subtotal_usr/NUM_CPUS; subtotal_usr=0}' | sed -e's/%/,/g' -e's/,$//'`
-      CPU_SYS_CSV=`grep -e"..:..:.." mpstat.$SUFFIX  | awk -v NUM_CPUS=$NUM_CPUS 'NR > 1 {subtotal_sys+=$5}  NR > 1 && NR % NUM_CPUS == 1 { printf "%.1f%", subtotal_sys/NUM_CPUS; subtotal_sys=0}' | sed -e's/%/,/g' -e's/,$//'`
-      CPU_TOTAL_CSV=`grep -e"..:..:.." mpstat.$SUFFIX  | awk -v NUM_CPUS=$NUM_CPUS 'NR > 1 {subtotal_t+=(100-$12)}  NR > 1 && NR % NUM_CPUS == 1 { printf "%.1f%", subtotal_t/NUM_CPUS; subtotal_t=0}' | sed -e's/%/,/g' -e's/,$//'`
-      echo "CPU_USER_TRACE: $CPU_USER_CSV"
-      echo "CPU_SYS_TRACE: $CPU_SYS_CSV"
-      echo "CPU_TOTAL_TRACE: $CPU_TOTAL_CSV"
-    fi
+    CPU_USER_CSV=`grep -e"..:..:.." mpstat.$SUFFIX  | awk -v NUM_CPUS=$NUM_CPUS 'NR > 1 {subtotal_usr+=$3}  NR > 1 && NR % NUM_CPUS == 1 { printf "%.1f%", subtotal_usr/NUM_CPUS; subtotal_usr=0}' | sed -e's/%/,/g' -e's/,$//'`
+    CPU_SYS_CSV=`grep -e"..:..:.." mpstat.$SUFFIX  | awk -v NUM_CPUS=$NUM_CPUS 'NR > 1 {subtotal_sys+=$5}  NR > 1 && NR % NUM_CPUS == 1 { printf "%.1f%", subtotal_sys/NUM_CPUS; subtotal_sys=0}' | sed -e's/%/,/g' -e's/,$//'`
+    CPU_TOTAL_CSV=`grep -e"..:..:.." mpstat.$SUFFIX  | awk -v NUM_CPUS=$NUM_CPUS 'NR > 1 {subtotal_t+=(100-$12)}  NR > 1 && NR % NUM_CPUS == 1 { printf "%.1f%", subtotal_t/NUM_CPUS; subtotal_t=0}' | sed -e's/%/,/g' -e's/,$//'`
+    echo "CPU_USER_TRACE: $CPU_USER_CSV" | tee -a trace.csv
+    echo "CPU_SYS_TRACE: $CPU_SYS_CSV" | tee -a trace.csv
+    echo "CPU_TOTAL_TRACE: $CPU_TOTAL_CSV" | tee -a trace.csv
     kill $THREADS_PID
     wait $THREADS_PID 2>/dev/null
     ;;
@@ -391,15 +387,14 @@ function end_monitor_cpu {
     CPU_IDLE_AVG=`echo $CPU_IDLE_SAMPLES | sed -e's/% /+/g' -e's/%//' | bc | awk -v SAMPLES=$NUM_SAMPLES '{printf "%.1f",$1/SAMPLES}'`
     CPU_TOTAL_AVG=`echo "100 - $CPU_IDLE_AVG" | bc`
     echo "Average CPU util: $CPU_TOTAL_AVG % (${CPU_USER_AVG} % user, ${CPU_SYS_AVG} % sys, ${CPU_IDLE_AVG} % idle)"
-    # If CPU_TRACE is set, display periodic CPU utilization (csv format)
-    if [ ! -z "$CPU_TRACE" ]; then
-      CPU_USER_CSV=`echo $CPU_USER_SAMPLES | sed -e's/% /,/g' -e's/%//'`
-      CPU_SYS_CSV=`echo $CPU_SYS_SAMPLES | sed -e's/% /,/g' -e's/%//'`
-      CPU_TOTAL_CSV=`grep 'CPU usage:' top.$SUFFIX | awk '{print $7}' | sed -e's/%//g' | awk '{printf("%s,", 100-$1)}'`
-      echo "CPU_USER_TRACE: $CPU_USER_CSV"
-      echo "CPU_SYS_TRACE: $CPU_SYS_CSV"
-      echo "CPU_TOTAL_TRACE: $CPU_TOTAL_CSV"
-    fi
+    # Display periodic CPU utilization (csv format) in trace.csv
+    CPU_USER_CSV=`echo $CPU_USER_SAMPLES | sed -e's/% /,/g' -e's/%//'`
+    CPU_SYS_CSV=`echo $CPU_SYS_SAMPLES | sed -e's/% /,/g' -e's/%//'`
+    CPU_TOTAL_CSV=`grep 'CPU usage:' top.$SUFFIX | awk '{print $7}' | sed -e's/%//g' | awk '{printf("%s,", 100-$1)}'`
+    echo "CPU_USER_TRACE: $CPU_USER_CSV" | tee -a trace.csv
+    echo "CPU_SYS_TRACE: $CPU_SYS_CSV" | tee -a trace.csv
+    echo "CPU_TOTAL_TRACE: $CPU_TOTAL_CSV" | tee -a trace.csv
+
     ;;
   esac
 }
@@ -462,7 +457,8 @@ function summarize_driver_output {
         print "     99%      0ms  (data not available)"
         print "Requests/sec: " median_tp " (median), " avg_tp " (avg), " max_tp " (max)";
         print "THROUGHPUT_TRACE: " csv
-      }'
+      }' | tee -a jmeterSummary.$SUFFIX
+    grep "THROUGHPUT_TRACE:" jmeterSummary.$SUFFIX | tee -a trace.csv
     ;;
   wrk | wrk-pipeline | wrk-nokeepalive | wrk2)
     # Nothing to do
@@ -905,16 +901,17 @@ fi
 teardown
 
 # Summarize RSS growth
-# If RSS_TRACE is set, also print a line of CSV for each process' RSS history
+# Print a line of CSV for each process' RSS history in trace.csv
 echo "Resident set size (RSS) summary:" | tee mem.log
 for i in `seq 1 $RSSMON_COUNT`; do
   RSS_START=`head -n 1 rssout${i}.txt | awk '{print $1}'`
   RSS_END=`tail -n 1 rssout${i}.txt | awk '{print $1}'`
+  printf "RSS_TRACE_${i}: " | tee -a trace.csv
+  file=rssout${i}.txt
+  awk '{printf $1","}END{printf "\n"}' $file | tee -a trace.csv
   RSS_HIGH_WATER_MARK=`awk -v max=0 '{if($1>max){max=$1}}END{print max}' rssout${i}.txt`
   let RSS_DIFF=$RSS_END-$RSS_START
   echo "$i: RSS (kb): start=$RSS_START end=$RSS_END delta=$RSS_DIFF max=$RSS_HIGH_WATER_MARK" | tee -a mem.log
-  if [ ! -z "$RSS_TRACE" ]; then
-    echo -n "$i: RSS_TRACE: "
-    cat rssout${i}.txt | awk 'BEGIN {r=""} {r=r $1 ","} END {print r}'
-  fi
 done
+printf "RSS_TRACE_TOTAL: " | tee -a trace.csv
+awk -v RSS_TRACE=$RSS_TRACE '{a[FNR]+=$1}END{for(i=1;i<=FNR;i++) printf a[i]","}' rssout* | tee -a trace.csv
