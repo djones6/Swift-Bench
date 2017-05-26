@@ -38,6 +38,7 @@ if [ -z "$1" ]; then
   echo "  DURATION: time (sec) to apply load (default: 30)"
   echo "  SLEEP: time (sec) to wait between tests (default: 5)"
   echo "  RUNNAME: name of directory to store results (default: compares/DDDDMMYY-HHmmss)"
+  echo "  PRE_RUN_SCRIPT: a script to run before each test (eg. cleanup / setup actions)"
   echo "Output control:"
   echo "  VERBOSE_TRACE: set to enable printing of RSS, CPU and throughtput trace values"
   echo "  JSONFILE: fully-qualified filename to write results to in JSON format"
@@ -181,6 +182,9 @@ for i in `seq 1 $ITERATIONS`; do
     # set RECOMPARE to skip running + just re-parse output files from an earlier run
     if [ -z "$RECOMPARE" ]; then
       sleep $SLEEP  # Allow system time to settle
+      if [ ! -z "$PRE_RUN_SCRIPT" ]; then
+        $PRE_RUN_SCRIPT   # Execute pre-run cleanup / setup actions if requested
+      fi
       # Usage: ./drive.sh <run name> <cpu list> <clients list> <duration> <app> <url> <instances>
       $SCRIPT_DIR/drive.sh compare_$run $CPUS $CLIENTS $DURATION ${IMPLS[$j]} $URL ${INSTANCES[$j]} > $out 2>&1
     else

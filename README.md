@@ -65,6 +65,7 @@ Before using this script, there are a number of hard-coded settings that you sho
   DURATION: time (sec) to apply load (default: 30)
   SLEEP: time (sec) to wait between tests (default: 5)
   RUNNAME: name of directory to store results (default: compares/YYYYMMDD-HHmmss)
+  PRE_RUN_SCRIPT: a script to run before each test (eg. cleanup / setup actions)
 Output control:
   VERBOSE_TRACE: set to echo periodic CPU, RSS and throughput values in CSV format to the console
   JSONFILE: fully-qualified filename to write results to in JSON format
