@@ -131,6 +131,8 @@ if [ -z "$1" -o "$1" == "--help" ]; then
   echo "  PROFILER to one of: $PROFILER_CHOICES"
   echo "  CLIENT to a hostname used to execute the load driver (must have $DRIVER installed)"
   echo "   - default is to execute on localhost"
+  echo "For wrk:"
+  echo "  WRK_SCRIPT - a .lua file to use (append any script args with -- <args>)"
   echo "For JMeter:"
   echo "  JMETER_SCRIPT - the .jmx file to use (required)"
   echo "  USER_PROPS - the user.properties file (default: jmeter/user.properties.sample)"
@@ -528,7 +530,11 @@ function do_sample {
     # If pipelining requested, use pipeline.lua
     # (see: https://github.com/TechEmpower/FrameworkBenchmarks)
     if [ $DRIVER = "wrk-pipeline" ]; then
-      WRK_SCRIPT="--script $SCRIPT_DIR/pipeline.lua -- 16"
+      WRK_SCRIPT="$SCRIPT_DIR/pipeline.lua -- 16"
+    fi
+    # If a script has been specified, add --script arg
+    if [ ! -z "$WRK_SCRIPT" ]; then
+      WRK_SCRIPT="--script $WRK_SCRIPT"
     fi
     WRK_OPTS=()
     if [ $DRIVER = "wrk-nokeepalive" ]; then
