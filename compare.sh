@@ -42,9 +42,11 @@ if [ -z "$1" ]; then
   echo "Output control:"
   echo "  VERBOSE_TRACE: set to enable printing of RSS, CPU and throughtput trace values"
   echo "  JSONFILE: fully-qualified filename to write results to in JSON format"
-  echo "Instance control:"
-  echo "  To run multiple instances of the application, add a comma and a number to the"
-  echo "  filename, eg: /my/app,4 to run 4 instances of /my/app"
+  echo "Per-implementation Options may follow the executable, comma-separated:"
+  echo "  instances=N: Run multiple instances of an application"
+  echo "  label=SomeName: Used to name the application in the output"
+  echo "  pwd=/some/directory: Specify the PWD for the application"
+  echo "Example: /path/to/myExecutable,label=MyProg1,pwd=/tmp"
   exit 1
 fi
 
@@ -186,26 +188,60 @@ if [ ! -z "$JENKINS_URL" ]; then
 fi
 json_object_end   # end configuration
 
-# Check requested applications all exist
+# Check requested applications all exist, parse options
 json_object_start "Implementations"
 let IMPLC=0
 for implstr in $*; do
-  # Parse impl string into executable,instances
+  let IMPLC=$IMPLC+1
+  # Default options
+  instances="1"
+  label="Implementation $IMPLC"
+  short_label="$IMPLC"
+  app_pwd=""
   impl=`echo $implstr | cut -d',' -f1`
-  instances=`echo $implstr | cut -d',' -f2 -s`
+  #instances=`echo $implstr | cut -d',' -f2 -s`
+  # Parse comma-separated list of options attached to impl
+  IFS=',' read -ra OPTS <<< "$implstr"
+  for OPTSTRING in "${OPTS[@]}"; do
+    OPTNAME="`echo $OPTSTRING | cut -d'=' -f1`"
+    OPTVAL="`echo $OPTSTRING | cut -d'=' -f2 -s`"
+    case "$OPTNAME" in
+    pwd)
+      app_pwd="$OPTVAL"
+      ;;
+    label)
+      label="$OPTVAL"
+      short_label="$OPTVAL"
+      ;;
+    instances)
+      instances="$OPTVAL"
+      ;;
+    *)
+      #echo "Ignoring $OPTNAME = $OPTVAL"
+      ;;
+    esac
+  done
+  # Attempt to convert a relative executable path to absolute path
   if [ -x "$PWD/$impl" ]; then
-    impl="$PWD/$impl"  # Convert to absolute path
+    impl="$PWD/$impl"  # Path is relative to PWD
+  fi
+  if [ -d "$app_pwd" -a -x "$app_pwd/$impl" ]; then
+    impl="$app_pwd/$impl"  # Path is relative to APP_PWD provided
   fi
   if [ ! -x "$impl" -a -z "$RECOMPARE" ]; then
     echo "Error: $impl is not executable"
     json_end
     exit 1
   fi
-  let IMPLC=$IMPLC+1
-  IMPLS[$IMPLC]=$impl
-  INSTANCES[$IMPLC]=$instances
-  echo "Implementation $IMPLC: ${IMPLS[$IMPLC]}" | tee -a $SUMMARY
-  json_string "$IMPLC" "${IMPLS[$IMPLC]}"
+
+  IMPLS[$IMPLC]=$impl                 # Executables
+  INSTANCES[$IMPLC]=$instances        # No. of instances for each executable
+  LABELS[$IMPLC]=$label               # Label for each executable
+  SHORT_LABELS[$IMPLC]=$short_label   # Short label for each executable
+  APP_PWDS[$IMPLC]=$app_pwd           # PWD for each executable
+
+  echo "${LABELS[$IMPLC]}: ${IMPLS[$IMPLC]}" | tee -a $SUMMARY
+  json_string "${LABELS[$IMPLC]}" "${IMPLS[$IMPLC]}"
 done
 json_object_end
 
@@ -216,8 +252,8 @@ mkdir -p $WORKDIR/runs
 for i in `seq 1 $ITERATIONS`; do
   json_object_start "Iteration $i"
   for j in `seq 1 $IMPLC`; do
-    json_object_start "Implementation $j"
-    echo "Iteration $i: Implementation $j"
+    json_object_start "${LABELS[$j]}"
+    echo "Iteration $i: ${LABELS[$j]}"
     run="${i}_${j}"
     let runNo=($i-1)*$IMPLC+$j
     out="$WORKDIR/compare_$run.out"
@@ -228,6 +264,7 @@ for i in `seq 1 $ITERATIONS`; do
       if [ ! -z "$PRE_RUN_SCRIPT" ]; then
         $PRE_RUN_SCRIPT   # Execute pre-run cleanup / setup actions if requested
       fi
+      export APP_PWD="${APP_PWDS[$j]}"
       # Usage: ./drive.sh <run name> <cpu list> <clients list> <duration> <app> <url> <instances>
       $SCRIPT_DIR/drive.sh compare_$run $CPUS $CLIENTS $DURATION ${IMPLS[$j]} $URL ${INSTANCES[$j]} > $out 2>&1
     else
@@ -381,8 +418,8 @@ for j in `seq 1 $IMPLC`; do
   AVG_LAT=$(bc <<< "scale=1; $TOT_LAT / $goodIterations")
   MAX99_LAT=$(bc <<< "scale=1; $MAX99_LAT / 1")
   MAX_LAT=$(bc <<< "scale=1; $MAX_LAT / 1")
-  awk -v a="$j" -v b="$AVG_TP" -v c="$MAX_TP" -v d="$AVG_CPU" -v e="$AVG_MEM" -v f="$AVG_LAT" -v g="$MAX99_LAT" -v h="$MAX_LAT" -v i="$goodIterations" 'BEGIN {printf "%14s | %10s | %10s | %7s | %12s | %8s | %8s | %8s | %5s \n", a, b, c, d, e, f, g, h, i}' >> $SUMMARY
-  json_object_start "Implementation $j"
+  awk -v a="${SHORT_LABELS[$j]}" -v b="$AVG_TP" -v c="$MAX_TP" -v d="$AVG_CPU" -v e="$AVG_MEM" -v f="$AVG_LAT" -v g="$MAX99_LAT" -v h="$MAX_LAT" -v i="$goodIterations" 'BEGIN {printf "%14s | %10s | %10s | %7s | %12s | %8s | %8s | %8s | %5s \n", a, b, c, d, e, f, g, h, i}' >> $SUMMARY
+  json_object_start "${LABELS[$j]}"
   json_number "Avg Throughput" $AVG_TP
   json_number "Max Throughput" $MAX_TP
   json_number "Avg CPU" $AVG_CPU

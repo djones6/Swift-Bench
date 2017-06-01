@@ -72,7 +72,13 @@ Output control:
 ```
 ...in addition, the environment variables consumed by `drive.sh` can also be specified.
 
-If you require multiple instances of the application, specify the application path and number of instances separated by a comma, for example: `/my/app,4` to run 4 instances of /my/app
+Per-implementation options may be specified.  These follow the executable, comma-separated:
+```
+  instances=N: Run multiple instances of an application
+  label=SomeName: Used to name the application in the output
+  pwd=/some/directory: Specify the PWD for the application
+```
+Example: `/path/to/myExecutable,label=MyProg1,pwd=/tmp`
 
 ## Example output
 
