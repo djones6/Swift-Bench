@@ -48,11 +48,25 @@ if [ -z "$1" ]; then
   exit 1
 fi
 
+# Check driver script is present
+if [ ! -e "$SCRIPT_DIR/drive.sh" ]; then
+  echo "Error: cannot find drive.sh in expected location: $SCRIPT_DIR"
+  exit 1
+fi
+if [ ! -x "$SCRIPT_DIR/drive.sh" ]; then
+  echo "Error: drive.sh script is not executable"
+  exit 1
+fi
+
+# Produce JSON output if requested
 if [ ! -z "$JSONFILE" ]; then
   json_set_file $JSONFILE
   json_start
 fi
 
+#
+# Benchmark configuration: parse environment / use defaults
+#
 if [ -z "$ITERATIONS" ]; then
   ITERATIONS=5
   echo "Using default ITERATIONS: $ITERATIONS"
@@ -105,14 +119,31 @@ if [ -z "$SLEEP" ]; then
   SLEEP=5
 fi
 
-# Check driver script is present
-if [ ! -e "$SCRIPT_DIR/drive.sh" ]; then
-  echo "Error: cannot find drive.sh in expected location: $SCRIPT_DIR"
-  exit 1
+if [ -z "$DRIVER" ]; then
+  DRIVER="wrk"
+  echo "Using default DRIVER: $DRIVER"
+else
+  echo "Using DRIVER: $DRIVER"
 fi
-if [ ! -x "$SCRIPT_DIR/drive.sh" ]; then
-  echo "Error: drive.sh script is not executable"
-  exit 1
+json_string "Driver" "$DRIVER"
+
+# If the benchmark uses a driver script, log the script location
+if [ ! -z "$WRK_SCRIPT" ]; then
+  echo "Using wrk script: $WRK_SCRIPT"
+  json_string "Driver Script" "$WRK_SCRIPT"
+fi
+if [ ! -z "$JMETER_SCRIPT" ]; then
+  echo "Using jmeter script: $JMETER_SCRIPT"
+  json_string "Driver Script" "$JMETER_SCRIPT"
+fi
+
+# By convention, benchmarks that connect to a DB will use DB_HOST and DB_PORT env vars
+# - if these are set, log them here
+if [ ! -z "$DB_HOST" ]; then
+  json_string "Database Host" "$DB_HOST"
+fi
+if [ ! -z "$DB_PORT" ]; then
+  json_string "Database Port" "$DB_PORT"
 fi
 
 # Define a location to store the output (default: compares/<date>-<time>)
@@ -140,8 +171,20 @@ echo "ITERATIONS: $ITERATIONS, DURATION: $DURATION, CLIENT: '$CLIENT', CLIENTS: 
 echo "PWD: $PWD" >> $SUMMARY
 json_string "Results Directory" "$PWD/$WORKDIR"
 
-# Log environment
-json_env
+# Log system configuration
+json_object_start "Configuration"
+HOSTNAME=`hostname | sed -e's#\..*##'`
+json_string "Hostname" "$HOSTNAME"
+# If we are running under Jenkins, log build information 
+if [ ! -z "$JENKINS_URL" ]; then
+  json_string "BUILD_ID" "$BUILD_ID"                 # Set by Jenkins
+  json_string "BUILD_URL" "$BUILD_URL"               # Set by Jenkins
+  json_string "AUTOMATION_COMMIT" "$GIT_COMMIT"      # Set by Jenkins
+  json_string "REPO" "$REPO"                         # Job parameter
+  json_string "REPO_COMMIT" "$REPO_COMMIT"           # Set by automation
+  json_string "BUILD_RUN_ID" "$BUILD_RUN_ID"         # Set by automation
+fi
+json_object_end   # end configuration
 
 # Check requested applications all exist
 json_object_start "Implementations"
