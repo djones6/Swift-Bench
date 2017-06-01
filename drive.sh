@@ -131,6 +131,7 @@ if [ -z "$1" -o "$1" == "--help" ]; then
   echo "  PROFILER to one of: $PROFILER_CHOICES"
   echo "  CLIENT to a hostname used to execute the load driver (must have $DRIVER installed)"
   echo "   - default is to execute on localhost"
+  echo "  APP_PWD to set the PWD when launching the app (default: results directory)"
   echo "For wrk:"
   echo "  WRK_SCRIPT - a .lua file to use (append any script args with -- <args>)"
   echo "For JMeter:"
@@ -677,15 +678,24 @@ function setup() {
 #
 # Start server instance(s) and associated monitoring
 # Expects $INSTANCES, $APP_AFFINITY, $APP_CMD and PROFILER_CMD to be set.
+# If $APP_PWD is set, changes to that directory before executing $APP_CMD.
 # Sets $APP_PIDS.
 #
 function startup() {
   echo "Starting App ($INSTANCES instances)"
+  local logPath=$PWD
+  if [ ! -z "$APP_PWD" ]; then
+    echo "App PWD: $APP_PWD"
+    pushd $APP_PWD > /dev/null
+  fi
   for i in `seq 1 $INSTANCES`; do
-    echo $APP_AFFINITY $APP_CMD | tee app${i}.log
-    $APP_AFFINITY $PROFILER_CMD $APP_CMD >> app${i}.log 2>&1 &
+    echo $APP_AFFINITY $APP_CMD | tee ${logPath}/app${i}.log
+    $APP_AFFINITY $PROFILER_CMD $APP_CMD >> ${logPath}/app${i}.log 2>&1 &
     APP_PIDS="$! $APP_PIDS"
   done
+  if [ ! -z "$APP_PWD" ]; then
+    popd > /dev/null
+  fi
 
   # Wait for servers to be ready (up to 30 seconds)
   # This allows server start scripts to perform pre-start actions (such as cleanup or database reset)
