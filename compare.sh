@@ -184,6 +184,7 @@ if [ ! -z "$JENKINS_URL" ]; then
   json_string "AUTOMATION_COMMIT" "$GIT_COMMIT"      # Set by Jenkins
   json_string "REPO" "$REPO"                         # Job parameter
   json_string "REPO_COMMIT" "$REPO_COMMIT"           # Set by automation
+  json_string "BASE_VERSION" "$BASE_VERSION"         # Set by automation
   json_string "VERSION_ID" "$VERSION_ID"             # Set by automation
 fi
 json_object_end   # end configuration
