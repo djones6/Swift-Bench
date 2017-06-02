@@ -42,17 +42,33 @@ if [ -z "$1" ]; then
   echo "Output control:"
   echo "  VERBOSE_TRACE: set to enable printing of RSS, CPU and throughtput trace values"
   echo "  JSONFILE: fully-qualified filename to write results to in JSON format"
-  echo "Instance control:"
-  echo "  To run multiple instances of the application, add a comma and a number to the"
-  echo "  filename, eg: /my/app,4 to run 4 instances of /my/app"
+  echo "Per-implementation Options may follow the executable, comma-separated:"
+  echo "  instances=N: Run multiple instances of an application"
+  echo "  label=SomeName: Used to name the application in the output"
+  echo "  pwd=/some/directory: Specify the PWD for the application"
+  echo "Example: /path/to/myExecutable,label=MyProg1,pwd=/tmp"
   exit 1
 fi
 
+# Check driver script is present
+if [ ! -e "$SCRIPT_DIR/drive.sh" ]; then
+  echo "Error: cannot find drive.sh in expected location: $SCRIPT_DIR"
+  exit 1
+fi
+if [ ! -x "$SCRIPT_DIR/drive.sh" ]; then
+  echo "Error: drive.sh script is not executable"
+  exit 1
+fi
+
+# Produce JSON output if requested
 if [ ! -z "$JSONFILE" ]; then
   json_set_file $JSONFILE
   json_start
 fi
 
+#
+# Benchmark configuration: parse environment / use defaults
+#
 if [ -z "$ITERATIONS" ]; then
   ITERATIONS=5
   echo "Using default ITERATIONS: $ITERATIONS"
@@ -105,14 +121,31 @@ if [ -z "$SLEEP" ]; then
   SLEEP=5
 fi
 
-# Check driver script is present
-if [ ! -e "$SCRIPT_DIR/drive.sh" ]; then
-  echo "Error: cannot find drive.sh in expected location: $SCRIPT_DIR"
-  exit 1
+if [ -z "$DRIVER" ]; then
+  DRIVER="wrk"
+  echo "Using default DRIVER: $DRIVER"
+else
+  echo "Using DRIVER: $DRIVER"
 fi
-if [ ! -x "$SCRIPT_DIR/drive.sh" ]; then
-  echo "Error: drive.sh script is not executable"
-  exit 1
+json_string "Driver" "$DRIVER"
+
+# If the benchmark uses a driver script, log the script location
+if [ ! -z "$WRK_SCRIPT" ]; then
+  echo "Using wrk script: $WRK_SCRIPT"
+  json_string "Driver Script" "$WRK_SCRIPT"
+fi
+if [ ! -z "$JMETER_SCRIPT" ]; then
+  echo "Using jmeter script: $JMETER_SCRIPT"
+  json_string "Driver Script" "$JMETER_SCRIPT"
+fi
+
+# By convention, benchmarks that connect to a DB will use DB_HOST and DB_PORT env vars
+# - if these are set, log them here
+if [ ! -z "$DB_HOST" ]; then
+  json_string "Database Host" "$DB_HOST"
+fi
+if [ ! -z "$DB_PORT" ]; then
+  json_string "Database Port" "$DB_PORT"
 fi
 
 # Define a location to store the output (default: compares/<date>-<time>)
@@ -140,29 +173,76 @@ echo "ITERATIONS: $ITERATIONS, DURATION: $DURATION, CLIENT: '$CLIENT', CLIENTS: 
 echo "PWD: $PWD" >> $SUMMARY
 json_string "Results Directory" "$PWD/$WORKDIR"
 
-# Log environment
-json_env
+# Log system configuration
+json_object_start "Configuration"
+HOSTNAME=`hostname | sed -e's#\..*##'`
+json_string "Hostname" "$HOSTNAME"
+# If we are running under Jenkins, log build information 
+if [ ! -z "$JENKINS_URL" ]; then
+  json_string "BUILD_ID" "$BUILD_ID"                 # Set by Jenkins
+  json_string "BUILD_URL" "$BUILD_URL"               # Set by Jenkins
+  json_string "AUTOMATION_COMMIT" "$GIT_COMMIT"      # Set by Jenkins
+  json_string "REPO" "$REPO"                         # Job parameter
+  json_string "REPO_COMMIT" "$REPO_COMMIT"           # Set by automation
+  json_string "BASE_VERSION" "$BASE_VERSION"         # Set by automation
+  json_string "VERSION_ID" "$VERSION_ID"             # Set by automation
+fi
+json_object_end   # end configuration
 
-# Check requested applications all exist
+# Check requested applications all exist, parse options
 json_object_start "Implementations"
 let IMPLC=0
 for implstr in $*; do
-  # Parse impl string into executable,instances
+  let IMPLC=$IMPLC+1
+  # Default options
+  instances="1"
+  label="Implementation $IMPLC"
+  short_label="$IMPLC"
+  app_pwd=""
   impl=`echo $implstr | cut -d',' -f1`
-  instances=`echo $implstr | cut -d',' -f2 -s`
+  #instances=`echo $implstr | cut -d',' -f2 -s`
+  # Parse comma-separated list of options attached to impl
+  IFS=',' read -ra OPTS <<< "$implstr"
+  for OPTSTRING in "${OPTS[@]}"; do
+    OPTNAME="`echo $OPTSTRING | cut -d'=' -f1`"
+    OPTVAL="`echo $OPTSTRING | cut -d'=' -f2 -s`"
+    case "$OPTNAME" in
+    pwd)
+      app_pwd="$OPTVAL"
+      ;;
+    label)
+      label="$OPTVAL"
+      short_label="$OPTVAL"
+      ;;
+    instances)
+      instances="$OPTVAL"
+      ;;
+    *)
+      #echo "Ignoring $OPTNAME = $OPTVAL"
+      ;;
+    esac
+  done
+  # Attempt to convert a relative executable path to absolute path
   if [ -x "$PWD/$impl" ]; then
-    impl="$PWD/$impl"  # Convert to absolute path
+    impl="$PWD/$impl"  # Path is relative to PWD
+  fi
+  if [ -d "$app_pwd" -a -x "$app_pwd/$impl" ]; then
+    impl="$app_pwd/$impl"  # Path is relative to APP_PWD provided
   fi
   if [ ! -x "$impl" -a -z "$RECOMPARE" ]; then
     echo "Error: $impl is not executable"
     json_end
     exit 1
   fi
-  let IMPLC=$IMPLC+1
-  IMPLS[$IMPLC]=$impl
-  INSTANCES[$IMPLC]=$instances
-  echo "Implementation $IMPLC: ${IMPLS[$IMPLC]}" | tee -a $SUMMARY
-  json_string "$IMPLC" "${IMPLS[$IMPLC]}"
+
+  IMPLS[$IMPLC]=$impl                 # Executables
+  INSTANCES[$IMPLC]=$instances        # No. of instances for each executable
+  LABELS[$IMPLC]=$label               # Label for each executable
+  SHORT_LABELS[$IMPLC]=$short_label   # Short label for each executable
+  APP_PWDS[$IMPLC]=$app_pwd           # PWD for each executable
+
+  echo "${LABELS[$IMPLC]}: ${IMPLS[$IMPLC]}" | tee -a $SUMMARY
+  json_string "${LABELS[$IMPLC]}" "${IMPLS[$IMPLC]}"
 done
 json_object_end
 
@@ -173,8 +253,8 @@ mkdir -p $WORKDIR/runs
 for i in `seq 1 $ITERATIONS`; do
   json_object_start "Iteration $i"
   for j in `seq 1 $IMPLC`; do
-    json_object_start "Implementation $j"
-    echo "Iteration $i: Implementation $j"
+    json_object_start "${LABELS[$j]}"
+    echo "Iteration $i: ${LABELS[$j]}"
     run="${i}_${j}"
     let runNo=($i-1)*$IMPLC+$j
     out="$WORKDIR/compare_$run.out"
@@ -185,6 +265,7 @@ for i in `seq 1 $ITERATIONS`; do
       if [ ! -z "$PRE_RUN_SCRIPT" ]; then
         $PRE_RUN_SCRIPT   # Execute pre-run cleanup / setup actions if requested
       fi
+      export APP_PWD="${APP_PWDS[$j]}"
       # Usage: ./drive.sh <run name> <cpu list> <clients list> <duration> <app> <url> <instances>
       $SCRIPT_DIR/drive.sh compare_$run $CPUS $CLIENTS $DURATION ${IMPLS[$j]} $URL ${INSTANCES[$j]} > $out 2>&1
     else
@@ -338,8 +419,8 @@ for j in `seq 1 $IMPLC`; do
   AVG_LAT=$(bc <<< "scale=1; $TOT_LAT / $goodIterations")
   MAX99_LAT=$(bc <<< "scale=1; $MAX99_LAT / 1")
   MAX_LAT=$(bc <<< "scale=1; $MAX_LAT / 1")
-  awk -v a="$j" -v b="$AVG_TP" -v c="$MAX_TP" -v d="$AVG_CPU" -v e="$AVG_MEM" -v f="$AVG_LAT" -v g="$MAX99_LAT" -v h="$MAX_LAT" -v i="$goodIterations" 'BEGIN {printf "%14s | %10s | %10s | %7s | %12s | %8s | %8s | %8s | %5s \n", a, b, c, d, e, f, g, h, i}' >> $SUMMARY
-  json_object_start "Implementation $j"
+  awk -v a="${SHORT_LABELS[$j]}" -v b="$AVG_TP" -v c="$MAX_TP" -v d="$AVG_CPU" -v e="$AVG_MEM" -v f="$AVG_LAT" -v g="$MAX99_LAT" -v h="$MAX_LAT" -v i="$goodIterations" 'BEGIN {printf "%14s | %10s | %10s | %7s | %12s | %8s | %8s | %8s | %5s \n", a, b, c, d, e, f, g, h, i}' >> $SUMMARY
+  json_object_start "${LABELS[$j]}"
   json_number "Avg Throughput" $AVG_TP
   json_number "Max Throughput" $MAX_TP
   json_number "Avg CPU" $AVG_CPU
