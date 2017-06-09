@@ -38,9 +38,6 @@ function executeTest {
 
     # Write output to results file
     echo "$results" >> $dir/results/$TESTNAME.txt
-
-    # Send benchmark data to Cloudant
-    pushDataToCloudant ${JSONFILE} ${SWIFT_DASHBOARD_CLOUDANT_DATABASE}
 }
 
 #
@@ -150,24 +147,4 @@ function postBenchmark {
     *)
       ;;
     esac
-}
-
-#
-# Push JSON file to Cloudant for use in performance dashboard
-#
-function pushDataToCloudant {
-    local JSONFILE="$1"
-    local DATABASE_NAME="$2"
-
-# Only push if environment variable has been set to true (default)
-if [ "$PUSH_TO_CLOUDANT" = "true" ]
-then
-curl https://${SWIFT_DASHBOARD_CLOUDANT_USERNAME}:${SWIFT_DASHBOARD_CLOUDANT_PASSWORD}@${SWIFT_DASHBOARD_CLOUDANT_USERNAME}.cloudant.com/${DATABASE_NAME} \
-        -X POST \
-        -H "Content-Type: application/json" \
-        -d @${JSONFILE}
-else
-echo "Not pushing data to Cloudant database"
-fi
-
 }
