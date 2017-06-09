@@ -317,11 +317,11 @@ for i in `seq 1 $ITERATIONS`; do
     for instNum in `seq 1 ${NUM_PROCESSES}`; do
       TRACE=`grep "${instNum}: CPU time delta" $out`
       val=`echo $TRACE | sed -e's#.*user=\([0-9\.\-]*\) .*#\1#'`
-      CPU_USR=$(bc <<< "$val + $CPU_USR")
+      CPU_USR=$(bc <<< "$val + $CPU_USR" | sed -e's/^\./0./' -e's/^-\./-0./')
       val=`echo $TRACE | sed -e's#.*sys=\([0-9\.\-]*\) .*#\1#'`
-      CPU_SYS=$(bc <<< "$val + $CPU_SYS")
+      CPU_SYS=$(bc <<< "$val + $CPU_SYS" | sed -e's/^\./0./' -e's/^-\./-0./')
       val=`echo $TRACE | sed -e's#.*total=\([0-9\.\-]*\).*#\1#'`
-      CPU_TOT=$(bc <<< "$val + $CPU_TOT")
+      CPU_TOT=$(bc <<< "$val + $CPU_TOT" | sed -e's/^\./0./' -e's/^-\./-0./')
     done
     if [ ! -z "$VERBOSE_TRACE" ]; then
       echo "Total CPU time consumed by $NUM_PROCESSES server processes: user=$CPU_USR sys=$CPU_SYS total=$CPU_TOT"
@@ -412,13 +412,13 @@ for j in `seq 1 $IMPLC`; do
       MAX_LAT=${LATMAX[$runNo]}
     fi
   done
-  AVG_TP=$(bc <<< "scale=1; $TOT_TP / $goodIterations")
-  MAX_TP=$(bc <<< "scale=1; $MAX_TP / 1")
-  AVG_CPU=$(bc <<< "scale=1; $TOT_CPU / $goodIterations")
-  AVG_MEM=$(bc <<< "scale=0; $TOT_MEM / $goodIterations")
-  AVG_LAT=$(bc <<< "scale=1; $TOT_LAT / $goodIterations")
-  MAX99_LAT=$(bc <<< "scale=1; $MAX99_LAT / 1")
-  MAX_LAT=$(bc <<< "scale=1; $MAX_LAT / 1")
+  AVG_TP=$(bc <<< "scale=1; $TOT_TP / $goodIterations" | sed -e's/^\./0./' -e's/^-\./-0./')
+  MAX_TP=$(bc <<< "scale=1; $MAX_TP / 1" | sed -e's/^\./0./' -e's/^-\./-0./')
+  AVG_CPU=$(bc <<< "scale=1; $TOT_CPU / $goodIterations" | sed -e's/^\./0./' -e's/^-\./-0./')
+  AVG_MEM=$(bc <<< "scale=0; $TOT_MEM / $goodIterations" | sed -e's/^\./0./' -e's/^-\./-0./')
+  AVG_LAT=$(bc <<< "scale=1; $TOT_LAT / $goodIterations" | sed -e's/^\./0./' -e's/^-\./-0./')
+  MAX99_LAT=$(bc <<< "scale=1; $MAX99_LAT / 1" | sed -e's/^\./0./' -e's/^-\./-0./')
+  MAX_LAT=$(bc <<< "scale=1; $MAX_LAT / 1" | sed -e's/^\./0./' -e's/^-\./-0./')
   awk -v a="${SHORT_LABELS[$j]}" -v b="$AVG_TP" -v c="$MAX_TP" -v d="$AVG_CPU" -v e="$AVG_MEM" -v f="$AVG_LAT" -v g="$MAX99_LAT" -v h="$MAX_LAT" -v i="$goodIterations" 'BEGIN {printf "%14s | %10s | %10s | %7s | %12s | %8s | %8s | %8s | %5s \n", a, b, c, d, e, f, g, h, i}' >> $SUMMARY
   json_object_start "${LABELS[$j]}"
   json_number "Avg Throughput" $AVG_TP
