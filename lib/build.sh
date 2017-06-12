@@ -58,7 +58,7 @@ function describeBuild {
   local pathname=$1	# The build name (build directory)
   local repo=$2		# The repository under evaluation
   local commit=$3 	# The commit that we want to evaluate
-  local branch=$4	# The branch name for the commit (for display purposes only)
+  local branchname=$4	# The branch name for the commit (for display purposes only)
 
   local name=$(basename $pathname)
 
@@ -75,6 +75,13 @@ function describeBuild {
 
     if [ "$package" = "$repo" ]; then
       local hash=`git rev-parse --short $commit`
+      # We should be able to get the branch name here. Tail because the first
+      # item listed will be our detached HEAD state.
+      local branch=`git branch --contains $commit | tail -n 1`
+      if [ ! "$branchname" = "$branch" ]; then
+          echo "Warning, provided branch name $branchname does not match inferred branch name $branch, using $branchname anyway"
+          branch=$branchname
+      fi
       # Overwrite NEW_COMMIT with short hash for later
       NEW_COMMIT=$hash
     else
