@@ -30,7 +30,7 @@ function build {
   if [ ! -z "$repo" ] && [ ! -z "$commit" ]; then
     echo "Configuring Packages"
     # Only works on Swift 3.1+
-    swift package edit $repo --revision $commit
+    swift package edit $repo --revision $commit && echo "Package '$repo' edited, commit '$commit'"
   fi
 
   # Build the project
