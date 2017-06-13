@@ -33,8 +33,8 @@ function build {
     swift package edit $repo --revision $commit && echo "Package '$repo' edited, commit '$commit'"
   fi
 
-  # Build the project
-  swift build -c release ${SWIFT_BUILD_FLAGS}
+  # Build the project, exiting early if the build fails
+  swift build -c release ${SWIFT_BUILD_FLAGS} || exit $?
 
   if [ ! -z "$pathname" ]; then
     # Symlink to requested build directory
