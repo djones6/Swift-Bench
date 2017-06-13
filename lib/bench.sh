@@ -32,12 +32,10 @@ function executeTest {
     # Set up environment for driver scripts
     export URL CLIENTS DURATION ITERATIONS DRIVER INTERVAL VERBOSE_TRACE JSONFILE WRK_SCRIPT JMETER_SCRIPT WORK_RATE RUNNAME PRE_RUN_SCRIPT
 
+    echo "### Benchmark: $TESTNAME"
     setupBenchmark $TESTNAME
-    runBenchmark $TESTNAME
+    runBenchmark $TESTNAME | tee -a $dir/results/$TESTNAME.txt
     postBenchmark $TESTNAME
-
-    # Write output to results file
-    echo "$results" >> $dir/results/$TESTNAME.txt
 }
 
 #
@@ -106,7 +104,6 @@ function setupBenchmark {
 # behaviour is to compare two implementations: one named baselineBuild/release/<implementation>
 # and one named newBuild/release/<implementation>.
 #
-# Returns benchmark output in variable: $results
 # Adds return code of benchmark process to: $rc
 #
 function runBenchmark {
@@ -115,11 +112,11 @@ function runBenchmark {
     case "$TESTNAME" in
     Example1)
       # Execute a 3-way compare of specified implementations
-      results=`$dir/bench/compare.sh $dir/${IMPL1} $dir/${IMPL2} $dir/${IMPL3}`
+      $dir/bench/compare.sh $dir/${IMPL1} $dir/${IMPL2} $dir/${IMPL3}
       ;;
     *)
       # Execute a 2-way compare of baseline and new build for the same implementation
-      results=`$dir/bench/compare.sh $dir/baselineBuild/release/${IMPLEMENTATION},label=Baseline,pwd=$dir $dir/newBuild/release/${IMPLEMENTATION},label=New,pwd=$dir`
+      $dir/bench/compare.sh $dir/baselineBuild/release/${IMPLEMENTATION},label=Baseline,pwd=$dir $dir/newBuild/release/${IMPLEMENTATION},label=New,pwd=$dir
       ;;
     esac
 
