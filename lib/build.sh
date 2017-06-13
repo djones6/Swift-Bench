@@ -65,7 +65,8 @@ function describeBuild {
   json_object_start "$name"
   json_string "Swift" "`cat .swift-version`"
 
-  for package in .build/checkouts/*
+  # Note: this relies on Swift 3.1 build layout (SPM implementation detail)
+  for package in $pathname/checkouts/*
   do
     cd $package
     package=`basename $package`
