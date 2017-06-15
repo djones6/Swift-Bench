@@ -25,16 +25,22 @@ function executeTest {
     WORK_RATE=""                             # Workload injection rate (if using wrk2)
     VERBOSE_TRACE=1                          # Print traces to console
     PRE_RUN_SCRIPT=""                        # Optional setup/cleanup actions before each measurement
+    # Support for distributed tests
+    CLIENT="localhost"                       # Host that will run workload driver
+    DB_HOST=""                               # Host that provides database (consumed by benchmark)
+    DB_PORT=""                               # Database port (consumed by benchmark)
    
     # Override with benchmark-specific values 
     setParams $TESTNAME
     
     # Set up environment for driver scripts
-    export URL CLIENTS DURATION ITERATIONS DRIVER INTERVAL VERBOSE_TRACE JSONFILE WRK_SCRIPT JMETER_SCRIPT WORK_RATE RUNNAME PRE_RUN_SCRIPT
+    export URL CLIENTS DURATION ITERATIONS DRIVER INTERVAL VERBOSE_TRACE JSONFILE WRK_SCRIPT JMETER_SCRIPT WORK_RATE RUNNAME PRE_RUN_SCRIPT CLIENT DB_HOST DB_PORT
 
     echo "### Benchmark: $TESTNAME"
     setupBenchmark $TESTNAME
-    runBenchmark $TESTNAME | tee -a $dir/results/$TESTNAME.txt
+    # Cannot use pipe here, as bash executes the LHS in a subshell (losing variables)
+    runBenchmark $TESTNAME > $dir/results/$TESTNAME.txt
+    cat $dir/results/$TESTNAME.txt
     postBenchmark $TESTNAME
 }
 
