@@ -114,7 +114,7 @@ function describeBuild {
       json_string "commit" "$hash"
       json_string "message" "`git show -s --format=%B $hash`"
       json_object_end
-      cd -
+      cd - >/dev/null
     done
     ;;
   esac
