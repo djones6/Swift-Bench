@@ -61,7 +61,7 @@ function describeBuild {
   local commit=$4 	# The commit that we want to evaluate
   local branchname=$5	# The branch name for the commit (for display purposes only)
 
-  pushd $path
+  pushd $path > /dev/null
   local swiftVersion=`cat .swift-version`
 
   json_object_start "$name"
@@ -119,7 +119,7 @@ function describeBuild {
     ;;
   esac
   json_object_end
-  popd
+  popd > /dev/null
 }
 
 #
