@@ -128,14 +128,12 @@ function describeBuild {
 # originalName_<last-modified-date>
 #
 function preserveDir {
-  set +x
   local dirName="$1"
   if [ -d "$dirName" ]; then
     local resName="${dirName}_`perl -e 'use File::stat; use Date::Format; print time2str(\"%Y%m%d-%H%M%S\", stat($ARGV[0])->mtime);' \"$dirName\"`"
     echo "Preserving existing directory $dirName as $resName"
     mv $dirName $resName
   fi
-  set -x
   mkdir $dirName
 }
 
