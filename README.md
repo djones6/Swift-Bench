@@ -140,3 +140,9 @@ To enable, set environment variable PROFILER to one of the following:
 - `perf-cg` - two reports are generated: a flat profile, and a detailed call graph.
 - `perf-idle` - profiles scheduler to get insight into why the application is idle (requires sudo)
   - this is experimental and requires kernel debug symbols installed to `/usr/lib/debug/boot/vmlinux-'uname -r'`
+
+### Installing profiler prerequisites
+
+Profiling with perf requires the `linux-tools` and kernel `dbgsym` packages to be installed:
+
+```sudo apt-get install linux-tools-`uname -r` linux-image-`uname -r`-dbgsym```

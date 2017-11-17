@@ -47,6 +47,9 @@
 # valgrind (massif tool) - useful in identifying memory leaks
 # oprofile / perf - system profilers, useful in identifying where CPU is consumed
 #
+# Profiler prerequisites:
+# sudo apt-get install linux-tools-`uname -r` linux-image-`uname -r`-dbgsym
+#
 RUN_NAME=$1
 CPULIST=$2
 SAMPLES=$3
