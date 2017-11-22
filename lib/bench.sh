@@ -27,14 +27,12 @@ function executeTest {
     PRE_RUN_SCRIPT=""                        # Optional setup/cleanup actions before each measurement
     # Support for distributed tests
     CLIENT="localhost"                       # Host that will run workload driver
-    DB_HOST=""                               # Host that provides database (consumed by benchmark)
-    DB_PORT=""                               # Database port (consumed by benchmark)
    
     # Override with benchmark-specific values 
     setParams $TESTNAME
     
     # Set up environment for driver scripts
-    export URL CLIENTS DURATION ITERATIONS DRIVER INTERVAL VERBOSE_TRACE JSONFILE WRK_SCRIPT JMETER_SCRIPT WORK_RATE RUNNAME PRE_RUN_SCRIPT CLIENT DB_HOST DB_PORT
+    export URL CLIENTS DURATION ITERATIONS DRIVER INTERVAL VERBOSE_TRACE JSONFILE WRK_SCRIPT JMETER_SCRIPT WORK_RATE RUNNAME PRE_RUN_SCRIPT CLIENT
 
     echo "### Benchmark: $TESTNAME"
     setupBenchmark $TESTNAME
