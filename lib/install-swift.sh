@@ -18,7 +18,7 @@ function installSwift {
     #   Swift 3.x = XCode 8.3
     #   Swift 4.0.x = XCode 9.2
     #   Swift 4.1.x = XCode 9.4
-    #   Swift 4.2.x = XCode 10 (TBD)
+    #   Swift 4.2.x = XCode 10
     #
     # Note that this relies on having previous versions of XCode installed in a
     # prescribed location (example: /Applications/Xcode8.3.3).
@@ -37,10 +37,11 @@ function installSwift {
         ;;
       1)
         echo "Switching to Xcode 9.4 for Swift 4.1.x"
-        sudo xcode-select -s /Applications/Xcode.app
+        sudo xcode-select -s /Applications/Xcode9.4.app
         ;;
       2)
-        echo "TODO: support Swift 4.2"
+        echo "Switching to Xcode 10.0 for Swift 4.2.x"
+        sudo xcode-select -s /Applications/Xcode10.0.app
         ;;
       *)
         echo "Unknown Swift 4 minor version: ${swiftMinor}"
