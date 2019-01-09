@@ -1,3 +1,6 @@
+**DEPRECATED** - please see 'Bench-Swift' in: https://github.com/IBM-Swift/Kitura-Benchmarks.git instead.
+
+
 A performance benchmark harness for testing web frameworks, which offers the convenience of running CPU and RSS (resident set) monitoring in the background. CPU affinity is supported on Linux.
 
 It is essentially a small collection of bash scripts, calling out to standard tools such as sed, awk, some optional system utilities such as mpstat, and various workload drivers such as wrk.
